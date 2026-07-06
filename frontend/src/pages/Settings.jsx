@@ -236,10 +236,14 @@ const ProfileTab = ({ user, changePassword }) => {
 // ─────────────────────────────────────────────────────────────────
 // SECURITY TAB
 // ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// SECURITY TAB
+// ─────────────────────────────────────────────────────────────────
 const SecurityTab = () => {
   const [sessions,     setSessions]     = useState([]);
   const [loginHistory, setLoginHistory] = useState([]);
   const [loading,      setLoading]      = useState(true);
+  const [visibleHistoryCount, setVisibleHistoryCount] = useState(5); // how many login history rows to show
 
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState(null);
@@ -260,6 +264,7 @@ const SecurityTab = () => {
       ]);
       setSessions(s.data);
       setLoginHistory(h.data);
+      setVisibleHistoryCount(5); // reset pagination on reload
       setTwoFactorEnabled(!!a.data.two_factor_enabled);
     } catch {}
     setLoading(false);
@@ -329,6 +334,9 @@ const SecurityTab = () => {
       setTwoFABusy(false);
     }
   };
+
+  const visibleLoginHistory = loginHistory.slice(0, visibleHistoryCount);
+  const hasMoreHistory = loginHistory.length > visibleHistoryCount;
 
   return (
     <>
@@ -435,23 +443,33 @@ const SecurityTab = () => {
         ) : loginHistory.length === 0 ? (
           <p className="text-sm text-ink-faint">No login history found.</p>
         ) : (
-          <div className="space-y-2">
-            {loginHistory.map(h => (
-              <div key={h.id} className="flex items-center justify-between rounded-lg border border-line p-3">
-                <div>
-                  <p className="text-sm font-medium text-ink truncate max-w-xs">{h.device || "Unknown device"}</p>
-                  <p className="text-xs text-ink-soft">{h.ip_address} · {new Date(h.created_at).toLocaleString()}</p>
+          <>
+            <div className="space-y-2">
+              {visibleLoginHistory.map(h => (
+                <div key={h.id} className="flex items-center justify-between rounded-lg border border-line p-3">
+                  <div>
+                    <p className="text-sm font-medium text-ink truncate max-w-xs">{h.device || "Unknown device"}</p>
+                    <p className="text-xs text-ink-soft">{h.ip_address} · {new Date(h.created_at).toLocaleString()}</p>
+                  </div>
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                    h.status === "SUCCESS"
+                      ? "bg-status-done/10 text-status-done"
+                      : "bg-flow-deep/10 text-flow-deep"
+                  }`}>
+                    {h.status}
+                  </span>
                 </div>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                  h.status === "SUCCESS"
-                    ? "bg-status-done/10 text-status-done"
-                    : "bg-flow-deep/10 text-flow-deep"
-                }`}>
-                  {h.status}
-                </span>
+              ))}
+            </div>
+
+            {hasMoreHistory && (
+              <div className="mt-3 flex justify-center">
+                <Button variant="ghost" onClick={() => setVisibleHistoryCount(c => c + 5)}>
+                  Show more
+                </Button>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </Section>
     </>
@@ -556,10 +574,14 @@ const NotificationsTab = () => {
 // ─────────────────────────────────────────────────────────────────
 // ACTIVITY TAB
 // ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// ACTIVITY TAB
+// ─────────────────────────────────────────────────────────────────
 const ActivityTab = () => {
   const [workspaces, setWorkspaces] = useState(null);
   const [workspaceId, setWorkspaceId] = useState("");
   const [activity, setActivity] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(5); // how many items to show
 
   useEffect(() => {
     api
@@ -574,6 +596,7 @@ const ActivityTab = () => {
   useEffect(() => {
     if (!workspaceId) return;
     setActivity(null);
+    setVisibleCount(5); // reset pagination when switching workspaces
     api
       .get(`/activity/${workspaceId}`)
       .then(({ data }) => setActivity(data))
@@ -593,6 +616,9 @@ const ActivityTab = () => {
       </Section>
     );
   }
+
+  const visibleActivity = activity?.slice(0, visibleCount) ?? [];
+  const hasMore = (activity?.length ?? 0) > visibleCount;
 
   return (
     <Section title="Activity" subtitle="Actions taken in a workspace, most recent first.">
@@ -623,18 +649,28 @@ const ActivityTab = () => {
       )}
 
       {activity?.length > 0 && (
-        <ul className="space-y-1">
-          {activity.map((a) => (
-            <li key={a.id} className="border-b border-line/60 py-3 text-sm last:border-0">
-              <p className="text-ink">
-                <span className="font-medium">{a.user_name}</span> {a.action}
-              </p>
-              <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
-                {new Date(a.created_at).toLocaleString()}
-              </p>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-1">
+            {visibleActivity.map((a) => (
+              <li key={a.id} className="border-b border-line/60 py-3 text-sm last:border-0">
+                <p className="text-ink">
+                  <span className="font-medium">{a.user_name}</span> {a.action}
+                </p>
+                <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                  {new Date(a.created_at).toLocaleString()}
+                </p>
+              </li>
+            ))}
+          </ul>
+
+          {hasMore && (
+            <div className="mt-3 flex justify-center">
+              <Button variant="ghost" onClick={() => setVisibleCount((c) => c + 5)}>
+                Show more
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </Section>
   );

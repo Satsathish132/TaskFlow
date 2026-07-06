@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
 import api from "../lib/api";
 import { projectApi } from "../api/endpoints";
@@ -74,6 +74,21 @@ const ProjectBoard = () => {
   const [submitting, setSubmitting] = useState(false);
   const [dragOverCol, setDragOverCol] = useState(null);
 
+  // ── Filters ──────────────────────────────────────────────────
+  const [filterAssignee, setFilterAssignee] = useState("");
+  const [filterPriority, setFilterPriority] = useState("");
+  const [filterSearch, setFilterSearch] = useState("");
+  const [filterDueDate, setFilterDueDate] = useState("");
+
+  const filtersActive = filterAssignee || filterPriority || filterSearch || filterDueDate;
+
+  const clearFilters = () => {
+    setFilterAssignee("");
+    setFilterPriority("");
+    setFilterSearch("");
+    setFilterDueDate("");
+  };
+
   const canManage = CAN_MANAGE_TASK(user.role);
 
   const loadTasks = useCallback(async () => {
@@ -97,6 +112,33 @@ const ProjectBoard = () => {
     loadTasks();
     loadMembers();
   }, [loadProjectMeta, loadTasks, loadMembers]);
+
+  // Apply filters on top of the loaded tasks, before splitting into columns.
+  const filteredTasks = useMemo(() => {
+    if (!tasks) return tasks;
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
+    const endOfWeek = new Date(startOfToday.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    return tasks.filter((t) => {
+      if (filterAssignee === "unassigned" && t.assigned_to) return false;
+      if (filterAssignee && filterAssignee !== "unassigned" && String(t.assigned_to) !== String(filterAssignee)) return false;
+      if (filterPriority && t.priority !== filterPriority) return false;
+      if (filterSearch && !t.title.toLowerCase().includes(filterSearch.toLowerCase())) return false;
+
+      if (filterDueDate) {
+        const due = t.due_date ? new Date(t.due_date) : null;
+        if (filterDueDate === "no_due_date" && due) return false;
+        if (filterDueDate === "overdue" && !(due && due < now && t.status !== "DONE")) return false;
+        if (filterDueDate === "today" && !(due && due >= startOfToday && due < endOfToday)) return false;
+        if (filterDueDate === "this_week" && !(due && due >= startOfToday && due < endOfWeek)) return false;
+      }
+
+      return true;
+    });
+  }, [tasks, filterAssignee, filterPriority, filterSearch, filterDueDate]);
 
   if (!workspaceId) {
     return (
@@ -197,9 +239,51 @@ const ProjectBoard = () => {
         </div>
       )}
 
+      {/* ── Filter bar ─────────────────────────────────────────── */}
+      <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-paper-soft p-3">
+        <Input
+          placeholder="Search tasks…"
+          value={filterSearch}
+          onChange={(e) => setFilterSearch(e.target.value)}
+          className="max-w-[200px]"
+        />
+        <Select value={filterAssignee} onChange={(e) => setFilterAssignee(e.target.value)} className="max-w-[180px]">
+          <option value="">All assignees</option>
+          <option value="unassigned">Unassigned</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.first_name} {m.last_name}
+            </option>
+          ))}
+        </Select>
+        <Select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="max-w-[150px]">
+          <option value="">All priorities</option>
+          <option value="LOW">Low</option>
+          <option value="MEDIUM">Medium</option>
+          <option value="HIGH">High</option>
+        </Select>
+        <Select value={filterDueDate} onChange={(e) => setFilterDueDate(e.target.value)} className="max-w-[170px]">
+          <option value="">Any due date</option>
+          <option value="overdue">Overdue</option>
+          <option value="today">Due today</option>
+          <option value="this_week">Due this week</option>
+          <option value="no_due_date">No due date</option>
+        </Select>
+        {filtersActive && (
+          <Button variant="ghost" onClick={clearFilters}>
+            Clear filters
+          </Button>
+        )}
+        {filtersActive && filteredTasks && (
+          <span className="ml-auto font-mono text-[11px] uppercase tracking-wider text-ink-faint">
+            {filteredTasks.length} of {tasks.length} tasks
+          </span>
+        )}
+      </div>
+
       <div className="kanban-scroll flex gap-5 overflow-x-auto pb-4">
         {COLUMNS.map((col) => {
-          const colTasks = tasks?.filter((t) => t.status === col.key) || [];
+          const colTasks = filteredTasks?.filter((t) => t.status === col.key) || [];
           return (
             <div
               key={col.key}
@@ -223,7 +307,7 @@ const ProjectBoard = () => {
 
               {tasks !== null && colTasks.length === 0 && (
                 <div className="rounded-xl border border-dashed border-line px-3 py-6 text-center text-xs text-ink-faint">
-                  Nothing here yet
+                  {filtersActive ? "No tasks match your filters" : "Nothing here yet"}
                 </div>
               )}
 
