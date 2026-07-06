@@ -1,6 +1,7 @@
 const db = require("../config/db");
 const logActivity = require("../utils/logActivity");
 const createNotification = require("../utils/createNotification");
+const logger = require("../logger");
 
 exports.createProject = (req, res) => {
     const { workspaceId, name, description } = req.body || {};
@@ -13,15 +14,25 @@ exports.createProject = (req, res) => {
         `SELECT 1 FROM workspace_members WHERE workspace_id = ? AND user_id = ?`,
         [workspaceId, userId],
         (err, members) => {
-            if (err) return res.status(500).json({ error: err.message });
+            if (err) {
+                logger.error("CREATE_PROJECT (check member) ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
             if (members.length === 0) return res.status(403).json({ message: "Not a workspace member" });
 
             db.query(
                 `INSERT INTO projects (workspace_id, name, description, created_by) VALUES (?, ?, ?, ?)`,
                 [workspaceId, name, description || null, userId],
                 (err, result) => {
-                    if (err) return res.status(500).json({ error: err.message });
-                    logActivity(organizationId, workspaceId, userId, `Created project: ${name}`).catch(() => {});
+                    if (err) {
+                        logger.error("CREATE_PROJECT (insert) ERROR:", err);
+                        return res.status(500).json({ message: "Server error" });
+                    }
+
+                    logActivity(organizationId, workspaceId, userId, `Created project: ${name}`).catch((actErr) => logger.error("CREATE_PROJECT (activity log) ERROR:", actErr));
+
+                    logger.success(`Project created: ${name}`, { projectId: result.insertId, workspaceId, createdBy: userId });
+
                     return res.status(201).json({ message: "Project created successfully", projectId: result.insertId });
                 }
             );
@@ -43,7 +54,10 @@ exports.getProjects = (req, res) => {
          WHERE wm.workspace_id = ? AND wm.user_id = ?`,
         [workspaceId, userId],
         (err, members) => {
-            if (err) return res.status(500).json({ error: err.message });
+            if (err) {
+                logger.error("GET_PROJECTS (check member) ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
             if (members.length === 0) return res.status(403).json({ message: "Access denied" });
 
             const role = members[0].role;
@@ -80,7 +94,10 @@ exports.getProjects = (req, res) => {
             const params = isMember ? [workspaceId, userId] : [workspaceId];
 
             db.query(query, params, (err, result) => {
-                if (err) return res.status(500).json({ error: err.message });
+                if (err) {
+                    logger.error("GET_PROJECTS (list) ERROR:", err);
+                    return res.status(500).json({ message: "Server error" });
+                }
                 return res.json(result);
             });
         }
@@ -98,7 +115,10 @@ exports.getProjectMembers = (req, res) => {
          WHERE pm.project_id = ?`,
         [projectId],
         (err, result) => {
-            if (err) return res.status(500).json(err);
+            if (err) {
+                logger.error("GET_PROJECT_MEMBERS ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
             res.json(result);
         }
     );
@@ -118,31 +138,45 @@ exports.assignMember = (req, res) => {
         `SELECT 1 FROM workspace_members WHERE workspace_id = ? AND user_id = ?`,
         [workspaceId, userId],
         (err, rows) => {
-            if (err) return res.status(500).json(err);
+            if (err) {
+                logger.error("ASSIGN_MEMBER (check workspace member) ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
             if (rows.length === 0) return res.status(404).json({ message: "User is not a workspace member" });
 
             db.query(
                 `INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)`,
                 [projectId, userId],
                 (err) => {
-                    if (err) return res.status(500).json(err);
+                    if (err) {
+                        logger.error("ASSIGN_MEMBER (insert) ERROR:", err);
+                        return res.status(500).json({ message: "Server error" });
+                    }
 
                     db.query(
                         `SELECT name FROM projects WHERE id = ?`,
                         [projectId],
                         (err, projects) => {
-                            if (err) return res.status(500).json(err);
+                            if (err) {
+                                logger.error("ASSIGN_MEMBER (lookup project) ERROR:", err);
+                                return res.status(500).json({ message: "Server error" });
+                            }
                             const projectName = projects[0]?.name || "a project";
 
-                            createNotification(
-                                userId,
-                                workspaceId,
-                                "PROJECT_ASSIGNED",
-                                `You were assigned to project: ${projectName}`,
-                                req
-                            );
+                            Promise.resolve(
+                                createNotification(
+                                    userId,
+                                    workspaceId,
+                                    "PROJECT_ASSIGNED",
+                                    `You were assigned to project: ${projectName}`,
+                                    req
+                                )
+                            ).catch((notifyErr) => logger.error("ASSIGN_MEMBER (notify) ERROR:", notifyErr));
 
-                            logActivity(organizationId, workspaceId, currentUserId, `Assigned user to project: ${projectName}`).catch(() => {});
+                            logActivity(organizationId, workspaceId, currentUserId, `Assigned user to project: ${projectName}`).catch((actErr) => logger.error("ASSIGN_MEMBER (activity log) ERROR:", actErr));
+
+                            logger.success(`User assigned to project: ${projectName}`, { projectId, userId, workspaceId, assignedBy: currentUserId });
+
                             res.json({ message: "Member assigned to project" });
                         }
                     );
@@ -158,15 +192,33 @@ exports.removeMember = (req, res) => {
     const currentUserId = req.user.id;
     const organizationId = req.user.organization_id;
 
+    if (!projectId || !userId || !workspaceId) {
+        return res.status(400).json({ message: "projectId, userId and workspaceId required" });
+    }
+
     db.query(
         `DELETE FROM project_members WHERE project_id = ? AND user_id = ?`,
         [projectId, userId],
-        (err) => {
-            if (err) return res.status(500).json(err);
+        (err, result) => {
+            if (err) {
+                logger.error("REMOVE_PROJECT_MEMBER (delete) ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
+            if (result.affectedRows === 0) {
+                return res.status(404).json({ message: "User is not a member of this project" });
+            }
+
             db.query(`SELECT name FROM projects WHERE id = ?`, [projectId], (err, projects) => {
-                if (err) return res.status(500).json(err);
+                if (err) {
+                    logger.error("REMOVE_PROJECT_MEMBER (lookup project) ERROR:", err);
+                    return res.status(500).json({ message: "Server error" });
+                }
                 const projectName = projects[0]?.name || "a project";
-                logActivity(organizationId, workspaceId, currentUserId, `Removed user from project: ${projectName}`).catch(() => {});
+
+                logActivity(organizationId, workspaceId, currentUserId, `Removed user from project: ${projectName}`).catch((actErr) => logger.error("REMOVE_PROJECT_MEMBER (activity log) ERROR:", actErr));
+
+                logger.success(`User removed from project: ${projectName}`, { projectId, userId, workspaceId, removedBy: currentUserId });
+
                 res.json({ message: "Member removed from project" });
             });
         }

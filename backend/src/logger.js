@@ -1,36 +1,48 @@
 // logger.js
-// Central logging module for the backend, built on Winston.
-//
-// - Logs to the console (colorized) in all environments.
-// - Logs to rotating-friendly files in /logs (errors separately from combined logs).
-// - Exposes helper methods: logger.info(), logger.warn(), logger.error(), logger.debug()
+// Simplified logging module — only three log types: success, info, error.
 //
 // Usage:
 //   const logger = require('./logger');
 //   logger.info('Server started', { port: 3000 });
+//   logger.success('User registered', { email });
 //   logger.error('Something broke', { err });
 
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
 
-// Make sure the logs directory exists
 const logsDir = path.join(__dirname, 'logs');
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir);
 }
 
-const isProduction = process.env.NODE_ENV === 'production';
+// Custom levels — only these three exist. Lower number = higher priority.
+const customLevels = {
+  levels: {
+    error: 0,
+    success: 1,
+    info: 2,
+  },
+  colors: {
+    error: 'red',
+    success: 'green',
+    info: 'blue',
+  },
+};
 
-// Shared format: timestamp + level + message, plus any extra metadata as JSON
+winston.addColors(customLevels.colors);
+
+// Only lets through log entries that match one specific level
+// (so each file contains ONLY its own level, nothing else).
+const onlyLevel = (level) =>
+  winston.format((info) => (info.level === level ? info : false))();
+
 const baseFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format.errors({ stack: true }), // capture stack traces when an Error object is logged
-  winston.format.splat(),
+  winston.format.errors({ stack: true }),
   winston.format.json()
 );
 
-// Human-friendly format for the console
 const consoleFormat = winston.format.combine(
   winston.format.colorize(),
   winston.format.timestamp({ format: 'HH:mm:ss' }),
@@ -41,34 +53,26 @@ const consoleFormat = winston.format.combine(
 );
 
 const logger = winston.createLogger({
-  level: isProduction ? 'info' : 'debug', // show debug logs locally, info+ in prod
+  levels: customLevels.levels,
+  level: 'info', // lets error, success, and info all through
   format: baseFormat,
-  defaultMeta: { service: 'backend' },
   transports: [
-    // All logs, level >= 'info', go here
-    new winston.transports.File({
-      filename: path.join(logsDir, 'combined.log'),
-    }),
-    // Only errors go here, for quick scanning
     new winston.transports.File({
       filename: path.join(logsDir, 'error.log'),
-      level: 'error',
+      format: winston.format.combine(onlyLevel('error'), baseFormat),
+    }),
+    new winston.transports.File({
+      filename: path.join(logsDir, 'success.log'),
+      format: winston.format.combine(onlyLevel('success'), baseFormat),
+    }),
+    new winston.transports.File({
+      filename: path.join(logsDir, 'info.log'),
+      format: winston.format.combine(onlyLevel('info'), baseFormat),
+    }),
+    new winston.transports.Console({
+      format: consoleFormat,
     }),
   ],
-  exceptionHandlers: [
-    new winston.transports.File({ filename: path.join(logsDir, 'exceptions.log') }),
-  ],
-  rejectionHandlers: [
-    new winston.transports.File({ filename: path.join(logsDir, 'rejections.log') }),
-  ],
 });
-
-// Always also log to the console. Keep it verbose in dev, quieter in prod.
-logger.add(
-  new winston.transports.Console({
-    format: consoleFormat,
-    level: isProduction ? 'info' : 'debug',
-  })
-);
 
 module.exports = logger;

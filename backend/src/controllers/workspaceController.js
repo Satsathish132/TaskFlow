@@ -1,5 +1,6 @@
 const db = require("../config/db");
 const logActivity = require("../utils/logActivity");
+const logger = require("../logger");
 
 exports.createWorkspace = (req, res) => {
     const { name, description } = req.body;
@@ -13,15 +14,25 @@ exports.createWorkspace = (req, res) => {
         `INSERT INTO workspaces (organization_id, name, description, created_by) VALUES (?,?,?,?)`,
         [organizationId, name, description || null, userId],
         (err, result) => {
-            if (err) return res.status(500).json(err);
+            if (err) {
+                logger.error("CREATE_WORKSPACE (insert workspace) ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
             const workspaceId = result.insertId;
 
             db.query(
                 `INSERT INTO workspace_members (workspace_id, user_id) VALUES (?,?)`,
                 [workspaceId, userId],
                 (err) => {
-                    if (err) return res.status(500).json(err);
-                    logActivity(organizationId, workspaceId, userId, `Created workspace: ${name}`).catch(() => {});
+                    if (err) {
+                        logger.error("CREATE_WORKSPACE (insert member) ERROR:", err);
+                        return res.status(500).json({ message: "Server error" });
+                    }
+
+                    logActivity(organizationId, workspaceId, userId, `Created workspace: ${name}`).catch((actErr) => logger.error("CREATE_WORKSPACE (activity log) ERROR:", actErr));
+
+                    logger.success(`Workspace created: ${name}`, { workspaceId, organizationId, createdBy: userId });
+
                     return res.status(201).json({ message: "Workspace created", workspaceId });
                 }
             );
@@ -47,7 +58,10 @@ exports.getMyWorkspaces = (req, res) => {
         `,
         [userId],
         (err, result) => {
-            if (err) return res.status(500).json(err);
+            if (err) {
+                logger.error("GET_MY_WORKSPACES ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
             res.json(result);
         }
     );

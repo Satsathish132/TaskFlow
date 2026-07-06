@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const db = require("../config/db");
 const logActivity = require("../utils/logActivity");
 const createNotification = require("../utils/createNotification");
+const logger = require("../logger");
 
 exports.inviteMember = (req, res) => {
     const { workspaceId, email, projectId } = req.body;
@@ -14,7 +15,10 @@ exports.inviteMember = (req, res) => {
     }
 
     db.query(`SELECT id, email FROM users WHERE email = ?`, [email], (err, user) => {
-        if (err) return res.status(500).json(err);
+        if (err) {
+            logger.error("INVITE_MEMBER (lookup user) ERROR:", err);
+            return res.status(500).json({ message: "Server error" });
+        }
         if (user.length === 0) return res.status(404).json({ message: "User not found" });
 
         const invitedUserId = user[0].id;
@@ -24,7 +28,10 @@ exports.inviteMember = (req, res) => {
             `SELECT 1 FROM workspace_members WHERE workspace_id = ? AND user_id = ?`,
             [workspaceId, invitedUserId],
             (err, existing) => {
-                if (err) return res.status(500).json(err);
+                if (err) {
+                    logger.error("INVITE_MEMBER (check member) ERROR:", err);
+                    return res.status(500).json({ message: "Server error" });
+                }
                 if (existing.length > 0) return res.status(400).json({ message: "User is already a member of this workspace" });
 
                 // check pending invite
@@ -32,7 +39,10 @@ exports.inviteMember = (req, res) => {
                     `SELECT 1 FROM workspace_invites WHERE workspace_id = ? AND email = ? AND status = 'PENDING'`,
                     [workspaceId, email],
                     (err, pendingInvite) => {
-                        if (err) return res.status(500).json(err);
+                        if (err) {
+                            logger.error("INVITE_MEMBER (check pending invite) ERROR:", err);
+                            return res.status(500).json({ message: "Server error" });
+                        }
                         if (pendingInvite.length > 0) return res.status(400).json({ message: "User already has a pending invite" });
 
                         const token = crypto.randomBytes(20).toString("hex");
@@ -41,18 +51,28 @@ exports.inviteMember = (req, res) => {
                             `SELECT first_name, last_name FROM users WHERE id = ?`,
                             [currentUserId],
                             (err, sender) => {
-                                if (err) return res.status(500).json(err);
+                                if (err) {
+                                    logger.error("INVITE_MEMBER (lookup sender) ERROR:", err);
+                                    return res.status(500).json({ message: "Server error" });
+                                }
                                 const senderName = sender.length ? `${sender[0].first_name} ${sender[0].last_name}` : "Someone";
 
                                db.query(
     `INSERT INTO workspace_invites (workspace_id, email, token, invited_by, project_id, expires_at) VALUES (?,?,?,?,?, DATE_ADD(NOW(), INTERVAL 7 DAY))`,
     [workspaceId, email, token, currentUserId, projectId || null],
                                     (err) => {
-                                        if (err) return res.status(500).json(err);
+                                        if (err) {
+                                            logger.error("INVITE_MEMBER (insert invite) ERROR:", err);
+                                            return res.status(500).json({ message: "Server error" });
+                                        }
 
-                                        createNotification(invitedUserId, workspaceId, "INVITE", `${senderName} invited you to a workspace`, req);
+                                        Promise.resolve(
+                                            createNotification(invitedUserId, workspaceId, "INVITE", `${senderName} invited you to a workspace`, req)
+                                        ).catch((notifyErr) => logger.error("INVITE_MEMBER (notify) ERROR:", notifyErr));
 
-                                        logActivity(organizationId, workspaceId, currentUserId, `Invited ${email} to workspace`).catch(() => {});
+                                        logActivity(organizationId, workspaceId, currentUserId, `Invited ${email} to workspace`).catch((actErr) => logger.error("INVITE_MEMBER (activity log) ERROR:", actErr));
+
+                                        logger.success(`Workspace invite sent to ${email}`, { workspaceId, invitedUserId, invitedBy: currentUserId });
 
                                         res.json({
                                             message: "Invite sent successfully",
@@ -93,7 +113,10 @@ exports.addExistingMember = (req, res) => {
         `SELECT id, first_name, last_name, organization_id FROM users WHERE id = ?`,
         [userId],
         (err, rows) => {
-            if (err) return res.status(500).json(err);
+            if (err) {
+                logger.error("ADD_EXISTING_MEMBER (lookup user) ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
             if (!rows.length) return res.status(404).json({ message: "User not found" });
             if (rows[0].organization_id !== organizationId) {
                 return res.status(403).json({ message: "User is not part of your organization" });
@@ -103,7 +126,10 @@ exports.addExistingMember = (req, res) => {
                 `SELECT 1 FROM workspace_members WHERE workspace_id = ? AND user_id = ?`,
                 [workspaceId, userId],
                 (err, existing) => {
-                    if (err) return res.status(500).json(err);
+                    if (err) {
+                        logger.error("ADD_EXISTING_MEMBER (check member) ERROR:", err);
+                        return res.status(500).json({ message: "Server error" });
+                    }
                     if (existing.length > 0) {
                         return res.status(400).json({ message: "User is already a member of this workspace" });
                     }
@@ -112,22 +138,29 @@ exports.addExistingMember = (req, res) => {
                         `INSERT INTO workspace_members (workspace_id, user_id) VALUES (?, ?)`,
                         [workspaceId, userId],
                         (err) => {
-                            if (err) return res.status(500).json(err);
+                            if (err) {
+                                logger.error("ADD_EXISTING_MEMBER (insert member) ERROR:", err);
+                                return res.status(500).json({ message: "Server error" });
+                            }
 
-                            createNotification(
-                                userId,
-                                workspaceId,
-                                "WORKSPACE_ADDED",
-                                "You were added to a workspace",
-                                req
-                            );
+                            Promise.resolve(
+                                createNotification(
+                                    userId,
+                                    workspaceId,
+                                    "WORKSPACE_ADDED",
+                                    "You were added to a workspace",
+                                    req
+                                )
+                            ).catch((notifyErr) => logger.error("ADD_EXISTING_MEMBER (notify) ERROR:", notifyErr));
 
                             logActivity(
                                 organizationId,
                                 workspaceId,
                                 currentUserId,
                                 `Added ${rows[0].first_name} ${rows[0].last_name} to workspace`
-                            ).catch(() => {});
+                            ).catch((actErr) => logger.error("ADD_EXISTING_MEMBER (activity log) ERROR:", actErr));
+
+                            logger.success(`Added existing member to workspace: user ${userId}`, { workspaceId, userId, addedBy: currentUserId });
 
                             res.json({ message: "Member added to workspace" });
                         }
@@ -155,7 +188,10 @@ exports.getMembers = (req, res) => {
         `,
         [workspaceId],
         (err, result) => {
-            if (err) return res.status(500).json(err);
+            if (err) {
+                logger.error("GET_MEMBERS ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
             res.json(result);
         }
     );
@@ -181,9 +217,16 @@ exports.changeRole = (req, res) => {
         `UPDATE users SET role = ? WHERE id = ?`,
         [role, userId],
         (err, result) => {
-            if (err) return res.status(500).json(err);
+            if (err) {
+                logger.error("CHANGE_ROLE ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
             if (result.affectedRows === 0) return res.status(404).json({ message: "User not found" });
-            logActivity(organizationId, workspaceId, currentUserId, `Changed role of user ${userId} to ${role}`).catch(() => {});
+
+            logActivity(organizationId, workspaceId, currentUserId, `Changed role of user ${userId} to ${role}`).catch((actErr) => logger.error("CHANGE_ROLE (activity log) ERROR:", actErr));
+
+            logger.success(`Role changed for user ${userId}`, { workspaceId, userId, newRole: role, changedBy: currentUserId });
+
             res.json({ message: "Role updated successfully" });
         }
     );
@@ -205,7 +248,10 @@ exports.removeMember = (req, res) => {
 
     // get target user role
     db.query(`SELECT role FROM users WHERE id = ?`, [userId], (err, rows) => {
-        if (err) return res.status(500).json(err);
+        if (err) {
+            logger.error("REMOVE_MEMBER (lookup user) ERROR:", err);
+            return res.status(500).json({ message: "Server error" });
+        }
         if (rows.length === 0) return res.status(404).json({ message: "User not found" });
 
         const targetRole = rows[0].role;
@@ -223,8 +269,15 @@ exports.removeMember = (req, res) => {
             `DELETE FROM workspace_members WHERE workspace_id = ? AND user_id = ?`,
             [workspaceId, userId],
             (err) => {
-                if (err) return res.status(500).json(err);
-                logActivity(organizationId, workspaceId, currentUserId, `Removed member from workspace`).catch(() => {});
+                if (err) {
+                    logger.error("REMOVE_MEMBER (delete) ERROR:", err);
+                    return res.status(500).json({ message: "Server error" });
+                }
+
+                logActivity(organizationId, workspaceId, currentUserId, `Removed member from workspace`).catch((actErr) => logger.error("REMOVE_MEMBER (activity log) ERROR:", actErr));
+
+                logger.success(`Member removed from workspace`, { workspaceId, userId, removedBy: currentUserId });
+
                 res.json({ message: "Member removed" });
             }
         );
@@ -238,7 +291,10 @@ exports.acceptInvite = (req, res) => {
         `SELECT * FROM workspace_invites WHERE token = ?`,
         [token],
         (err, invites) => {
-            if (err) return res.status(500).json(err);
+            if (err) {
+                logger.error("ACCEPT_INVITE (lookup invite) ERROR:", err);
+                return res.status(500).json({ message: "Server error" });
+            }
             if (invites.length === 0) return res.status(404).json({ message: "Invite not found" });
 
             const invite = invites[0];
@@ -247,7 +303,9 @@ exports.acceptInvite = (req, res) => {
                 return res.status(400).json({ message: `Invite already ${invite.status.toLowerCase()}` });
             }
             if (new Date(invite.expires_at) < new Date()) {
-                db.query(`UPDATE workspace_invites SET status = 'EXPIRED' WHERE id = ?`, [invite.id]);
+                db.query(`UPDATE workspace_invites SET status = 'EXPIRED' WHERE id = ?`, [invite.id], (err) => {
+                    if (err) logger.error("ACCEPT_INVITE (mark expired) ERROR:", err);
+                });
                 return res.status(400).json({ message: "Invite has expired" });
             }
 
@@ -255,7 +313,10 @@ exports.acceptInvite = (req, res) => {
                 `SELECT id FROM users WHERE email = ?`,
                 [invite.email],
                 (err, users) => {
-                    if (err) return res.status(500).json(err);
+                    if (err) {
+                        logger.error("ACCEPT_INVITE (lookup user) ERROR:", err);
+                        return res.status(500).json({ message: "Server error" });
+                    }
                     if (users.length === 0) {
                         return res.status(404).json({ message: "No account found for this email. Please register first." });
                     }
@@ -266,7 +327,10 @@ exports.acceptInvite = (req, res) => {
                         `INSERT IGNORE INTO workspace_members (workspace_id, user_id) VALUES (?, ?)`,
                         [invite.workspace_id, userId],
                         (err) => {
-                            if (err) return res.status(500).json(err);
+                            if (err) {
+                                logger.error("ACCEPT_INVITE (insert member) ERROR:", err);
+                                return res.status(500).json({ message: "Server error" });
+                            }
 
                             // If the invite targeted a specific project, also add them there.
                             const finish = () => {
@@ -274,7 +338,13 @@ exports.acceptInvite = (req, res) => {
                                     `UPDATE workspace_invites SET status = 'ACCEPTED' WHERE id = ?`,
                                     [invite.id],
                                     (err) => {
-                                        if (err) return res.status(500).json(err);
+                                        if (err) {
+                                            logger.error("ACCEPT_INVITE (mark accepted) ERROR:", err);
+                                            return res.status(500).json({ message: "Server error" });
+                                        }
+
+                                        logger.success(`Workspace invite accepted: ${invite.email}`, { workspaceId: invite.workspace_id, userId, projectId: invite.project_id || null });
+
                                         res.json({ message: "Invite accepted. Welcome to the workspace!" });
                                     }
                                 );
@@ -285,7 +355,10 @@ exports.acceptInvite = (req, res) => {
                                     `INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)`,
                                     [invite.project_id, userId],
                                     (err) => {
-                                        if (err) return res.status(500).json(err);
+                                        if (err) {
+                                            logger.error("ACCEPT_INVITE (insert project member) ERROR:", err);
+                                            return res.status(500).json({ message: "Server error" });
+                                        }
                                         finish();
                                     }
                                 );

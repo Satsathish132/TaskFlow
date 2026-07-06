@@ -4,6 +4,8 @@ const fs = require("fs");
 const { UPLOAD_ROOT } = require("../middleware/upload");
 const logger = require('../logger');
 
+const isValidId = (v) => /^\d+$/.test(String(v));
+
 // POST /tasks/:taskId/files
 // req.task and req.file are set by canAccessTaskFiles + multer middleware.
 exports.uploadFile = (req, res) => {
@@ -23,6 +25,12 @@ exports.uploadFile = (req, res) => {
         logger.error("TASK FILE INSERT ERROR:", err);
         return res.status(500).json({ message: "Server error" });
       }
+
+      logger.success(`File uploaded to task ${taskId}: ${req.file.originalname}`, {
+        fileId: result.insertId,
+        taskId: Number(taskId),
+        uploadedBy: req.user.id,
+      });
 
       return res.status(201).json({
         id: result.insertId,
@@ -49,7 +57,10 @@ exports.listFiles = (req, res) => {
      ORDER BY f.uploaded_at DESC`,
     [taskId],
     (err, rows) => {
-      if (err) return res.status(500).json({ message: "Server error" });
+      if (err) {
+        logger.error("LIST_TASK_FILES ERROR:", err);
+        return res.status(500).json({ message: "Server error" });
+      }
       return res.json(rows);
     }
   );
@@ -59,15 +70,22 @@ exports.listFiles = (req, res) => {
 exports.downloadFile = (req, res) => {
   const { taskId, fileId } = req.params;
 
+  if (!isValidId(taskId) || !isValidId(fileId)) {
+    return res.status(400).json({ message: "Invalid task or file id" });
+  }
+
   db.query(
     "SELECT original_name, stored_name FROM task_files WHERE id = ? AND task_id = ?",
     [fileId, taskId],
     (err, rows) => {
-      if (err) return res.status(500).json({ message: "Server error" });
+      if (err) {
+        logger.error("DOWNLOAD_TASK_FILE (lookup) ERROR:", err);
+        return res.status(500).json({ message: "Server error" });
+      }
       if (!rows.length) return res.status(404).json({ message: "File not found" });
 
       const file = rows[0];
-      const filePath = path.join(UPLOAD_ROOT, String(taskId), file.stored_name);
+      const filePath = path.join(UPLOAD_ROOT, taskId, file.stored_name);
 
       if (!fs.existsSync(filePath)) {
         return res.status(404).json({ message: "File no longer exists on disk" });
@@ -84,11 +102,18 @@ exports.downloadFile = (req, res) => {
 exports.deleteFile = (req, res) => {
   const { taskId, fileId } = req.params;
 
+  if (!isValidId(taskId) || !isValidId(fileId)) {
+    return res.status(400).json({ message: "Invalid task or file id" });
+  }
+
   db.query(
     "SELECT uploaded_by, stored_name FROM task_files WHERE id = ? AND task_id = ?",
     [fileId, taskId],
     (err, rows) => {
-      if (err) return res.status(500).json({ message: "Server error" });
+      if (err) {
+        logger.error("DELETE_TASK_FILE (lookup) ERROR:", err);
+        return res.status(500).json({ message: "Server error" });
+      }
       if (!rows.length) return res.status(404).json({ message: "File not found" });
 
       const file = rows[0];
@@ -100,10 +125,17 @@ exports.deleteFile = (req, res) => {
       }
 
       db.query("DELETE FROM task_files WHERE id = ?", [fileId], (err) => {
-        if (err) return res.status(500).json({ message: "Server error" });
+        if (err) {
+          logger.error("DELETE_TASK_FILE (delete) ERROR:", err);
+          return res.status(500).json({ message: "Server error" });
+        }
 
-        const filePath = path.join(UPLOAD_ROOT, String(taskId), file.stored_name);
-        fs.unlink(filePath, () => {}); // best-effort disk cleanup
+        const filePath = path.join(UPLOAD_ROOT, taskId, file.stored_name);
+        fs.unlink(filePath, (unlinkErr) => {
+          if (unlinkErr) logger.error("DELETE_TASK_FILE (disk cleanup) ERROR:", unlinkErr);
+        });
+
+        logger.success(`File deleted from task ${taskId}`, { fileId: Number(fileId), taskId: Number(taskId), deletedBy: req.user.id });
 
         return res.json({ message: "File deleted" });
       });

@@ -1,5 +1,6 @@
 const db = require("../config/db");
 const logActivity = require("../utils/logActivity");
+const logger = require("../logger");
 
 // ===============================
 // ADD COMMENT
@@ -32,6 +33,8 @@ exports.addComment = (req, res) => {
                 userId,
                 `Commented on task ${taskId}`
             ).catch(() => {});
+
+            logger.success(`Comment added on task ${taskId}`, { userId, taskId, workspaceId, commentId: result.insertId });
 
             res.json({ message: "Comment added", commentId: result.insertId });
         }

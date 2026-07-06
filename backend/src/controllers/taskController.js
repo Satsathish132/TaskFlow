@@ -1,6 +1,9 @@
 const db = require("../config/db");
 const logActivity = require("../utils/logActivity");
 const createNotification = require("../utils/createNotification");
+const logger = require("../logger");
+
+const VALID_TASK_STATUSES = ["TODO", "IN_PROGRESS", "DONE"];
 
 // CREATE TASK
 exports.createTask = (req, res) => {
@@ -19,18 +22,26 @@ exports.createTask = (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [workspaceId, projectId || null, title, description || null, assignedTo || null, userId, priority || "MEDIUM", dueDate || null],
       (err, result) => {
-        if (err) return res.status(500).json(err);
+        if (err) {
+          logger.error("CREATE_TASK (insert) ERROR:", err);
+          return res.status(500).json({ message: "Server error" });
+        }
 
         const taskId = result.insertId;
 
         if (assignedTo) {
-          createNotification(
-            assignedTo, workspaceId, "TASK_ASSIGNED",
-            `You got a new task: ${title}`, req
-          );
+          Promise.resolve(
+            createNotification(
+              assignedTo, workspaceId, "TASK_ASSIGNED",
+              `You got a new task: ${title}`, req
+            )
+          ).catch((notifyErr) => logger.error("CREATE_TASK (notify) ERROR:", notifyErr));
         }
 
-        logActivity(organizationId, workspaceId, userId, `Created task: ${title}`).catch(() => {});
+        logActivity(organizationId, workspaceId, userId, `Created task: ${title}`).catch((actErr) => logger.error("CREATE_TASK (activity log) ERROR:", actErr));
+
+        logger.success(`Task created: ${title}`, { taskId, workspaceId, projectId: projectId || null, createdBy: userId });
+
         return res.json({ message: "Task created successfully", taskId });
       }
     );
@@ -43,7 +54,10 @@ exports.createTask = (req, res) => {
       `SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ?`,
       [projectId, assignedTo],
       (err, rows) => {
-        if (err) return res.status(500).json(err);
+        if (err) {
+          logger.error("CREATE_TASK (check project member) ERROR:", err);
+          return res.status(500).json({ message: "Server error" });
+        }
         if (rows.length === 0) {
           return res.status(400).json({ message: "Assignee must be a member of this project" });
         }
@@ -79,7 +93,10 @@ exports.getTasks = (req, res) => {
      WHERE t.workspace_id = ?`,
     [workspaceId],
     (err, result) => {
-      if (err) return res.status(500).json(err);
+      if (err) {
+        logger.error("GET_TASKS ERROR:", err);
+        return res.status(500).json({ message: "Server error" });
+      }
       res.json(result);
     }
   );
@@ -91,15 +108,29 @@ exports.updateTaskStatus = (req, res) => {
   const userId = req.user.id;
   const organizationId = req.user.organization_id;
 
+  if (!taskId || !status) {
+    return res.status(400).json({ message: "taskId and status required" });
+  }
+  if (!VALID_TASK_STATUSES.includes(status)) {
+    return res.status(400).json({ message: `Invalid status. Must be one of: ${VALID_TASK_STATUSES.join(", ")}` });
+  }
+
   db.query(
     `UPDATE tasks SET status = ? WHERE id = ?`,
     [status, taskId],
     (err, result) => {
-      if (err) return res.status(500).json(err);
+      if (err) {
+        logger.error("UPDATE_TASK_STATUS ERROR:", err);
+        return res.status(500).json({ message: "Server error" });
+      }
       if (result.affectedRows === 0) {
         return res.status(404).json({ message: "Task not found" });
       }
-      logActivity(organizationId, workspaceId || null, userId, `Changed task ${taskId} status to ${status}`).catch(() => {});
+
+      logActivity(organizationId, workspaceId || null, userId, `Changed task ${taskId} status to ${status}`).catch((actErr) => logger.error("UPDATE_TASK_STATUS (activity log) ERROR:", actErr));
+
+      logger.success(`Task status updated: ${taskId} -> ${status}`, { taskId, status, workspaceId: workspaceId || null, updatedBy: userId });
+
       res.json({ message: "Task status updated successfully" });
     }
   );
@@ -126,11 +157,18 @@ exports.updateTask = (req, res) => {
        WHERE id = ?`,
       [title, description || null, priority || "MEDIUM", assignedTo || null, dueDate || null, id],
       (err, result) => {
-        if (err) return res.status(500).json(err);
+        if (err) {
+          logger.error("UPDATE_TASK (update) ERROR:", err);
+          return res.status(500).json({ message: "Server error" });
+        }
         if (result.affectedRows === 0) {
           return res.status(404).json({ message: "Task not found" });
         }
-        logActivity(organizationId, workspaceId || null, userId, `Updated task: ${title}`).catch(() => {});
+
+        logActivity(organizationId, workspaceId || null, userId, `Updated task: ${title}`).catch((actErr) => logger.error("UPDATE_TASK (activity log) ERROR:", actErr));
+
+        logger.success(`Task updated: ${title}`, { taskId: id, workspaceId: workspaceId || null, updatedBy: userId });
+
         res.json({ message: "Task updated successfully" });
       }
     );
@@ -140,7 +178,10 @@ exports.updateTask = (req, res) => {
     // Task's project isn't in the request body, so look it up first,
     // then confirm the new assignee actually belongs to that project.
     db.query(`SELECT project_id FROM tasks WHERE id = ?`, [id], (err, rows) => {
-      if (err) return res.status(500).json(err);
+      if (err) {
+        logger.error("UPDATE_TASK (lookup project) ERROR:", err);
+        return res.status(500).json({ message: "Server error" });
+      }
       if (rows.length === 0) return res.status(404).json({ message: "Task not found" });
 
       const projectId = rows[0].project_id;
@@ -154,7 +195,10 @@ exports.updateTask = (req, res) => {
         `SELECT 1 FROM project_members WHERE project_id = ? AND user_id = ?`,
         [projectId, assignedTo],
         (err2, memberRows) => {
-          if (err2) return res.status(500).json(err2);
+          if (err2) {
+            logger.error("UPDATE_TASK (check project member) ERROR:", err2);
+            return res.status(500).json({ message: "Server error" });
+          }
           if (memberRows.length === 0) {
             return res.status(400).json({ message: "Assignee must be a member of this project" });
           }
@@ -175,14 +219,24 @@ exports.deleteTask = (req, res) => {
   const organizationId = req.user.organization_id;
 
   db.query("SELECT title FROM tasks WHERE id = ?", [id], (err, rows) => {
-    if (err) return res.status(500).json(err);
+    if (err) {
+      logger.error("DELETE_TASK (lookup) ERROR:", err);
+      return res.status(500).json({ message: "Server error" });
+    }
     if (!rows.length) return res.status(404).json({ message: "Task not found" });
 
     const title = rows[0].title;
 
     db.query("DELETE FROM tasks WHERE id = ?", [id], (err2) => {
-      if (err2) return res.status(500).json(err2);
-      logActivity(organizationId, workspaceId || null, userId, `Deleted task: ${title}`).catch(() => {});
+      if (err2) {
+        logger.error("DELETE_TASK (delete) ERROR:", err2);
+        return res.status(500).json({ message: "Server error" });
+      }
+
+      logActivity(organizationId, workspaceId || null, userId, `Deleted task: ${title}`).catch((actErr) => logger.error("DELETE_TASK (activity log) ERROR:", actErr));
+
+      logger.success(`Task deleted: ${title}`, { taskId: id, workspaceId: workspaceId || null, deletedBy: userId });
+
       res.json({ message: "Task deleted successfully" });
     });
   });

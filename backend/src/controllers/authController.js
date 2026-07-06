@@ -50,6 +50,9 @@ exports.register = async (req, res) => {
               [userId, organizationId],
               (err) => {
                 if (err) return res.status(500).json({ message: "Server error" });
+
+                logger.success(`Organization registered: ${organization_name}`, { organizationId, userId, email });
+
                 return res.status(201).json({
                   message: "Organization and Super Admin created successfully",
                   organizationId,
@@ -88,7 +91,10 @@ exports.login = (req, res) => {
       const device = req.headers["user-agent"] || "Unknown";
       db.query(
         "INSERT INTO login_history (user_id, ip_address, device, status) VALUES (?,?,?,'SUCCESS')",
-        [user.id, ip, device]
+        [user.id, ip, device],
+        (err) => {
+          if (err) logger.error("LOGIN_HISTORY INSERT ERROR:", err);
+        }
       );
 
       return res.status(200).json({
@@ -111,7 +117,10 @@ exports.login = (req, res) => {
       const device = req.headers["user-agent"] || "Unknown";
       db.query(
         "INSERT INTO login_history (user_id, ip_address, device, status) VALUES (?,?,?,'FAILED')",
-        [user.id, ip, device]
+        [user.id, ip, device],
+        (err) => {
+          if (err) logger.error("LOGIN_HISTORY INSERT ERROR:", err);
+        }
       );
       return res.status(400).json({ message: "Wrong password" });
     }
@@ -135,15 +144,24 @@ if (loginType === "user" && user.role === "SUPER_ADMIN") {
 
     db.query(
       "INSERT INTO login_history (user_id, ip_address, device, status) VALUES (?,?,?,'SUCCESS')",
-      [user.id, ip, device]
+      [user.id, ip, device],
+      (err) => {
+        if (err) logger.error("LOGIN_HISTORY INSERT ERROR:", err);
+      }
     );
 
-    // ✅ Upsert session
+    // ✅ Upsert session (one active session row per user_id)
     db.query(
       `INSERT INTO sessions (user_id, token, ip_address, device)
-       VALUES (?,?,?,?)`,
-      [user.id, accessToken, ip, device]
+       VALUES (?,?,?,?)
+       ON DUPLICATE KEY UPDATE token = VALUES(token), ip_address = VALUES(ip_address), device = VALUES(device)`,
+      [user.id, accessToken, ip, device],
+      (err) => {
+        if (err) logger.error("SESSIONS INSERT ERROR:", err);
+      }
     );
+
+    logger.success(`User logged in: ${user.email}`, { userId: user.id });
 
     return res.json({
       accessToken,
@@ -179,6 +197,9 @@ exports.refreshToken = (req, res) => {
       }
 
       const newAccessToken = generateAccessToken(user);
+
+      logger.success(`Access token refreshed: ${user.email}`, { userId: user.id });
+
       res.json({ accessToken: newAccessToken });
     });
   });
@@ -224,6 +245,9 @@ exports.changePassword = async (req, res) => {
       [hashed, userId],
       (err) => {
         if (err) return res.status(500).json({ message: "Server error" });
+
+        logger.success(`Password changed: user ${userId}`, { userId });
+
         res.json({ message: "Password changed successfully" });
       }
     );
@@ -272,13 +296,23 @@ exports.setPassword = async (req, res) => {
 
         db.query(
           "INSERT INTO login_history (user_id, ip_address, device, status) VALUES (?,?,?,'SUCCESS')",
-          [user.id, ip, device]
+          [user.id, ip, device],
+          (err) => {
+            if (err) logger.error("LOGIN_HISTORY INSERT ERROR:", err);
+          }
         );
 
         db.query(
-          `INSERT INTO sessions (user_id, token, ip_address, device) VALUES (?,?,?,?)`,
-          [user.id, accessToken, ip, device]
+          `INSERT INTO sessions (user_id, token, ip_address, device)
+           VALUES (?,?,?,?)
+           ON DUPLICATE KEY UPDATE token = VALUES(token), ip_address = VALUES(ip_address), device = VALUES(device)`,
+          [user.id, accessToken, ip, device],
+          (err) => {
+            if (err) logger.error("SESSIONS INSERT ERROR:", err);
+          }
         );
+
+        logger.success(`Password set (first login): ${user.email}`, { userId: user.id });
 
         return res.json({
           message: "Password set successfully",
@@ -378,6 +412,8 @@ exports.createUser = async (req, res) => {
             }
           }
 
+          logger.success(`User created: ${orgEmail}`, { userId: result.insertId, role, organizationId: adminOrgId, emailSent });
+
           return res.status(201).json({
             message:   emailSent
               ? `Account created and details sent to ${personal_email}`
@@ -440,6 +476,7 @@ exports.forgotPassword = (req, res) => {
                 <p>If you didn't request this, you can safely ignore this email.</p>
               `,
             });
+            logger.success(`Password reset email sent: ${targetEmail}`, { userId: user.id });
           } catch (mailErr) {
             logger.error("FORGOT-PASSWORD EMAIL ERROR:", mailErr);
           }
@@ -480,6 +517,9 @@ exports.resetPassword = async (req, res) => {
         [hashed, user.id],
         (err) => {
           if (err) return res.status(500).json({ message: "Server error" });
+
+          logger.success(`Password reset completed: user ${user.id}`, { userId: user.id });
+
           return res.json({ message: "Password reset successfully. You can now log in." });
         }
       );
