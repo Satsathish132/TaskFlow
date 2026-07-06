@@ -1,0 +1,276 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/figtree";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Taskflow — modern design system.
+ * Semantic tokens the whole app renders from. Restyling here restyles the app.
+ */
+
+@theme inline {
+  --font-display: "Space Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  /* App palette */
+  --color-paper: var(--paper);
+  --color-paper-soft: var(--paper-soft);
+  --color-paper-deep: var(--paper-deep);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-flow: var(--flow);
+  --color-flow-deep: var(--flow-deep);
+  --color-flow-tint: var(--flow-tint);
+
+  /* shadcn bridge */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-fade-in: fade-in 0.4s ease both;
+  --animate-rise-in: rise-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-toast-in: toast-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-flow-dot: flow-dot 3.5s ease-in-out infinite;
+
+  --color-status-todo: var(--ink-faint);
+  --color-status-progress: var(--flow);
+  --color-status-done: oklch(0.62 0.15 155);
+
+  --shadow-card: 0 1px 2px oklch(0.23 0.018 275 / 0.04), 0 4px 16px oklch(0.23 0.018 275 / 0.05);
+  --shadow-lifted: 0 8px 30px oklch(0.23 0.018 275 / 0.12);
+}
+
+:root {
+  --radius: 0.75rem;
+
+  /* Warm editorial paper */
+  --paper: oklch(0.985 0.005 95);
+  --paper-soft: oklch(0.968 0.007 95);
+  --paper-deep: oklch(0.94 0.009 95);
+
+  /* Deep ink */
+  --ink: oklch(0.23 0.018 275);
+  --ink-soft: oklch(0.46 0.02 275);
+  --ink-faint: oklch(0.64 0.02 275);
+
+  --line: oklch(0.9 0.008 95);
+
+  /* Signature flow accent — vivid rose */
+  --flow: oklch(0.62 0.216 8);
+  --flow-deep: oklch(0.5 0.2 8);
+  --flow-tint: oklch(0.955 0.03 8);
+
+  /* shadcn mapped onto the app palette */
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--ink);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
+  --secondary: var(--paper-soft);
+  --secondary-foreground: var(--ink);
+  --muted: var(--paper-soft);
+  --muted-foreground: var(--ink-soft);
+  --accent: var(--flow-tint);
+  --accent-foreground: var(--flow-deep);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--flow);
+  --sidebar: var(--paper);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: var(--paper);
+  --sidebar-accent: var(--paper-soft);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--flow);
+}
+.dark {
+  /* Dark paper */
+  --paper: oklch(0.16 0.012 275);
+  --paper-soft: oklch(0.2 0.014 275);
+  --paper-deep: oklch(0.26 0.016 275);
+
+  /* Light ink on dark paper */
+  --ink: oklch(0.94 0.006 95);
+  --ink-soft: oklch(0.78 0.012 95);
+  --ink-faint: oklch(0.58 0.014 95);
+
+  --line: oklch(0.32 0.014 275);
+
+  /* Flow accent — brightened slightly for contrast on dark backgrounds */
+  --flow: oklch(0.68 0.19 8);
+  --flow-deep: oklch(0.6 0.19 8);
+  --flow-tint: oklch(0.28 0.06 8);
+
+  /* shadcn tokens that were hardcoded to white/light in :root */
+  --card: oklch(0.2 0.014 275);
+  --card-foreground: var(--ink);
+  --popover: oklch(0.2 0.014 275);
+  --popover-foreground: var(--ink);
+  --destructive: oklch(0.6 0.22 27);
+  --destructive-foreground: oklch(0.98 0 0);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+  html {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+  }
+  body {
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--flow) 22%, transparent);
+  }
+  *:focus-visible {
+    outline: 2px solid var(--flow);
+    outline-offset: 2px;
+  }
+
+  /* Global button touch/press feedback — applies to every <button> and
+     anything acting as one (role="button"), so individual components
+     don't need to remember to add their own hover/active transition
+     classes. Component-level Tailwind (e.g. hover:scale-105) still wins
+     where it's more specific; this is just the safety-net default. */
+  button,
+  [role="button"] {
+    transition: transform 0.15s ease, background-color 0.15s ease,
+      opacity 0.15s ease, box-shadow 0.15s ease;
+  }
+  button:active:not(:disabled),
+  [role="button"]:active {
+    transform: scale(0.96);
+  }
+  button:disabled {
+    transform: none;
+  }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* subtle paper grain for marketing surfaces */
+.grain { position: relative; }
+.grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+/* Flow rail — signature progress element */
+.flow-rail { position: relative; height: 2px; background: var(--paper-deep); }
+.flow-rail__dot {
+  position: absolute; top: 50%;
+  width: 10px; height: 10px; margin-top: -5px; margin-left: -5px;
+  border-radius: 9999px; background: var(--flow);
+  box-shadow: 0 0 0 4px var(--flow-tint);
+}
+
+.kanban-scroll::-webkit-scrollbar { height: 8px; }
+.kanban-scroll::-webkit-scrollbar-thumb { background: var(--paper-deep); border-radius: 9999px; }
+
+/* Chat scrollbar */
+.chat-scroll::-webkit-scrollbar { width: 6px; }
+.chat-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 9999px; }
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes flow-dot {
+  0% { left: 0%; }
+  50% { left: 100%; }
+  100% { left: 0%; }
+}
+
+/* Dark mode wave transition -- disables the browser's default cross-fade
+   so only the circular clip-path reveal (driven from ThemeToggle.jsx) shows. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+}
