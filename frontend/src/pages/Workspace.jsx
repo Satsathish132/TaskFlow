@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
+import { Filter, Calendar, Users, X, ChevronDown } from "lucide-react";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import AppShell from "../components/AppShell";
@@ -12,6 +13,22 @@ import { Field, Input, Textarea, Button } from "../components/kit";
 import { can } from "../utils/roles";
 
 const TABS = ["Projects", "Members", "Activity"];
+const ACTIVITY_PAGE_SIZE = 5;
+const ACTIVITY_PRESETS = [
+  { key: "all", label: "All time" },
+  { key: "today", label: "Today" },
+  { key: "7d", label: "Last 7 days" },
+  { key: "30d", label: "Last 30 days" },
+  { key: "custom", label: "Custom" },
+];
+
+// Format a Date as "YYYY-MM-DDTHH:mm" in local time, the shape <input type="datetime-local"> expects.
+const toLocalInputValue = (date) => {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(
+    date.getMinutes()
+  )}`;
+};
 
 const Workspace = () => {
   const { id } = useParams();
@@ -27,6 +44,13 @@ const Workspace = () => {
   const [projectForm, setProjectForm] = useState({ name: "", description: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const [activityFilter, setActivityFilter] = useState("");
+  const [activityPreset, setActivityPreset] = useState("all");
+  const [activityDateFrom, setActivityDateFrom] = useState("");
+  const [activityDateTo, setActivityDateTo] = useState("");
+  const [showCustomRange, setShowCustomRange] = useState(false);
+  const [activityVisibleCount, setActivityVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
 
   const loadMeta = useCallback(async () => {
     const { data } = await api.get("/workspaces/my");
@@ -51,6 +75,75 @@ const Workspace = () => {
   useEffect(() => {
     if (tab === "Activity" && activity === null) loadActivity();
   }, [tab, activity, loadActivity]);
+
+  // Reset pagination whenever a filter changes, or a fresh activity list loads.
+  useEffect(() => {
+    setActivityVisibleCount(ACTIVITY_PAGE_SIZE);
+  }, [activityFilter, activityPreset, activityDateFrom, activityDateTo, activity]);
+
+  const activityUsers = useMemo(() => {
+    if (!activity?.length) return [];
+    return Array.from(new Set(activity.map((a) => a.user_name))).sort();
+  }, [activity]);
+
+  const applyPreset = (presetKey) => {
+    setActivityPreset(presetKey);
+
+    if (presetKey === "custom") {
+      setShowCustomRange(true);
+      return;
+    }
+
+    setShowCustomRange(false);
+
+    if (presetKey === "all") {
+      setActivityDateFrom("");
+      setActivityDateTo("");
+      return;
+    }
+
+    const now = new Date();
+    const from = new Date(now);
+
+    if (presetKey === "today") {
+      from.setHours(0, 0, 0, 0);
+    } else if (presetKey === "7d") {
+      from.setDate(from.getDate() - 7);
+    } else if (presetKey === "30d") {
+      from.setDate(from.getDate() - 30);
+    }
+
+    setActivityDateFrom(toLocalInputValue(from));
+    setActivityDateTo(toLocalInputValue(now));
+  };
+
+  const clearActivityFilters = () => {
+    setActivityFilter("");
+    setActivityPreset("all");
+    setActivityDateFrom("");
+    setActivityDateTo("");
+    setShowCustomRange(false);
+  };
+
+  const filteredActivity = useMemo(() => {
+    if (!activity?.length) return activity;
+
+    const fromTime = activityDateFrom ? new Date(activityDateFrom).getTime() : null;
+    const toTime = activityDateTo ? new Date(activityDateTo).getTime() : null;
+
+    return activity.filter((a) => {
+      if (activityFilter && a.user_name !== activityFilter) return false;
+
+      const eventTime = new Date(a.created_at).getTime();
+      if (fromTime !== null && eventTime < fromTime) return false;
+      if (toTime !== null && eventTime > toTime) return false;
+
+      return true;
+    });
+  }, [activity, activityFilter, activityDateFrom, activityDateTo]);
+
+  const visibleActivity = filteredActivity?.slice(0, activityVisibleCount) ?? null;
+  const hasMoreActivity = (filteredActivity?.length ?? 0) > activityVisibleCount;
 
   const onCreateProject = async (e) => {
     e.preventDefault();
@@ -148,27 +241,165 @@ const Workspace = () => {
 
       {tab === "Activity" && (
         <section>
+          {activity?.length > 0 && (
+            <div className="mb-5 rounded-2xl border border-line bg-paper-soft p-4 shadow-card">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-ink-faint">
+                  <Filter className="h-3.5 w-3.5" />
+                  Filters
+                </div>
+                <p className="font-mono text-[11px] uppercase tracking-wider text-ink-faint">
+                  {filteredActivity.length} {filteredActivity.length === 1 ? "event" : "events"}
+                </p>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {ACTIVITY_PRESETS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => applyPreset(p.key)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                      activityPreset === p.key
+                        ? "bg-flow text-white shadow-sm"
+                        : "bg-paper text-ink-soft hover:bg-line hover:text-ink"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+
+                <div className="mx-1 h-4 w-px bg-line" />
+
+                <div className="relative">
+                  <select
+                    value={activityFilter}
+                    onChange={(e) => setActivityFilter(e.target.value)}
+                    className="appearance-none rounded-full border border-line bg-paper py-1.5 pl-8 pr-8 text-xs font-medium text-ink-soft transition hover:text-ink"
+                  >
+                    <option value="">All members</option>
+                    {activityUsers.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <Users className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
+                </div>
+              </div>
+
+              <div
+                className={`grid overflow-hidden transition-all duration-300 ease-out ${
+                  showCustomRange ? "mt-4 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                }`}
+              >
+                <div className="flex flex-wrap items-end gap-3 overflow-hidden">
+                  <Field label="From">
+                    <div className="relative">
+                      <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
+                      <input
+                        type="datetime-local"
+                        value={activityDateFrom}
+                        onChange={(e) => {
+                          setActivityDateFrom(e.target.value);
+                          setActivityPreset("custom");
+                        }}
+                        className="rounded-lg border border-line bg-paper py-1.5 pl-8 pr-3 text-sm text-ink"
+                      />
+                    </div>
+                  </Field>
+
+                  <Field label="To">
+                    <div className="relative">
+                      <Calendar className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-faint" />
+                      <input
+                        type="datetime-local"
+                        value={activityDateTo}
+                        onChange={(e) => {
+                          setActivityDateTo(e.target.value);
+                          setActivityPreset("custom");
+                        }}
+                        className="rounded-lg border border-line bg-paper py-1.5 pl-8 pr-3 text-sm text-ink"
+                      />
+                    </div>
+                  </Field>
+                </div>
+              </div>
+
+              {(activityFilter || activityPreset !== "all") && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                  {activityFilter && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-flow/10 px-2.5 py-1 text-xs font-medium text-flow-deep">
+                      <Users className="h-3 w-3" />
+                      {activityFilter}
+                      <button onClick={() => setActivityFilter("")} className="rounded-full hover:bg-flow/20">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  )}
+                  {activityPreset !== "all" && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-flow/10 px-2.5 py-1 text-xs font-medium text-flow-deep">
+                      <Calendar className="h-3 w-3" />
+                      {ACTIVITY_PRESETS.find((p) => p.key === activityPreset)?.label}
+                      <button
+                        onClick={() => applyPreset("all")}
+                        className="rounded-full hover:bg-flow/20"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  )}
+                  <button
+                    onClick={clearActivityFilters}
+                    className="text-xs font-medium text-ink-faint underline-offset-2 hover:text-ink hover:underline"
+                  >
+                    Clear all
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {activity?.length === 0 && (
             <EmptyState title="No activity yet" body="Actions taken in this workspace will show up here." />
           )}
-          {activity?.length > 0 && (
-            <ul className="space-y-1">
-              {activity.map((a, i) => (
-                <li
-                  key={a.id}
-                  className="animate-rise-in flex items-center gap-4 rounded-xl border border-line bg-paper-soft px-5 py-3"
-                  style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
-                >
-                  <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-flow" />
-                  <p className="flex-1 text-sm text-ink">
-                    <span className="font-medium">{a.user_name}</span> {a.action}
-                  </p>
-                  <p className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">
-                    {new Date(a.created_at).toLocaleString()}
-                  </p>
-                </li>
-              ))}
-            </ul>
+
+          {filteredActivity?.length === 0 && activity?.length > 0 && (
+            <EmptyState title="No matching activity" body="Try a different member or date range." />
+          )}
+
+          {visibleActivity?.length > 0 && (
+            <>
+              <ul className="space-y-1.5">
+                {visibleActivity.map((a, i) => (
+                  <li
+                    key={a.id}
+                    className="animate-rise-in flex items-center gap-4 rounded-xl border border-line bg-paper-soft px-5 py-3 transition-all hover:-translate-y-0.5 hover:border-flow/30 hover:shadow-card"
+                    style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
+                  >
+                    <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-flow" />
+                    <p className="flex-1 text-sm text-ink">
+                      <span className="font-medium">{a.user_name}</span> {a.action}
+                    </p>
+                    <p className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">
+                      {new Date(a.created_at).toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+
+              {hasMoreActivity && (
+                <div className="mt-5 flex justify-center">
+                  <button
+                    onClick={() => setActivityVisibleCount((c) => c + ACTIVITY_PAGE_SIZE)}
+                    className="group inline-flex items-center gap-1.5 rounded-full border border-line bg-paper-soft px-4 py-2 text-xs font-medium text-ink-soft transition-all hover:border-flow/40 hover:text-ink hover:shadow-card"
+                  >
+                    Show more
+                    <ChevronDown className="h-3.5 w-3.5 transition-transform group-hover:translate-y-0.5" />
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </section>
       )}

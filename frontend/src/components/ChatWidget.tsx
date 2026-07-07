@@ -286,7 +286,7 @@ export default function ChatWidget() {
               <div className="leading-tight">
                 <p className="font-display text-sm font-semibold text-ink">Flow Assistant</p>
                 <p className="font-mono text-[10px] uppercase tracking-wider text-ink-faint">
-                  AI agent · groq
+                  AI agent
                 </p>
               </div>
             </div>

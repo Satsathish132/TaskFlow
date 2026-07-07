@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import FlowRail from "../components/FlowRail";
+import TaskflowLogo from "../components/TaskflowLogo";
 import { useAuth } from "../context/AuthContext";
+
 
 const FEATURES = [
   {
@@ -53,9 +55,7 @@ const Landing = () => {
       {/* nav */}
       <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-flow font-display text-sm font-semibold text-white">
-            T
-          </span>
+          <TaskflowLogo className="h-7 w-7" />
           <span className="font-display text-lg tracking-tight text-ink">Taskflow</span>
         </div>
         <nav className="flex items-center gap-2">
@@ -66,7 +66,7 @@ const Landing = () => {
             to="/register"
             className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-paper transition hover:bg-flow-deep"
           >
-            Start your organization
+            Register Your Company
           </Link>
         </nav>
       </header>

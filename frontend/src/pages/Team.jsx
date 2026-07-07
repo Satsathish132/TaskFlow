@@ -85,7 +85,6 @@ const Team = () => {
                 <th className="px-5 py-3 font-medium">Name</th>
                 <th className="px-5 py-3 font-medium">Email</th>
                 <th className="px-5 py-3 font-medium">Role</th>
-                <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -119,15 +118,6 @@ const Team = () => {
                         </Select>
                       ) : (
                         <RoleBadge role={u.role} />
-                      )}
-                    </td>
-                    <td className="px-5 py-3">
-                      {u.must_change_password ? (
-                        <span className="font-mono text-[10px] uppercase tracking-wider text-status-progress">
-                          Pending setup
-                        </span>
-                      ) : (
-                        <span className="font-mono text-[10px] uppercase tracking-wider text-status-done">Active</span>
                       )}
                     </td>
                     <td className="px-5 py-3 text-right">

@@ -1,13 +1,12 @@
 import { Link } from "react-router-dom";
 import FlowRail from "./FlowRail";
+import TaskflowLogo from "./TaskflowLogo";
 
 const AuthLayout = ({ eyebrow, title, subtitle, children }) => (
   <div className="grain relative flex min-h-screen items-center justify-center bg-paper px-6 py-12">
     <div className="w-full max-w-sm">
       <Link to="/" className="mb-10 flex items-center justify-center gap-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-flow font-display text-sm font-semibold text-white">
-          T
-        </span>
+        <TaskflowLogo className="h-7 w-7" />
         <span className="font-display text-lg tracking-tight text-ink">Taskflow</span>
       </Link>
 

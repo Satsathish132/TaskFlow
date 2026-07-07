@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useNotifications } from "../context/NotificationContext";
 import RoleBadge from "./RoleBadge";
 import ThemeToggle from "./ThemeToggle";
+import TaskflowLogo from "./TaskflowLogo";
 import { can } from "../utils/roles";
 import ToastStack from "./ToastStack";
 
@@ -33,11 +34,7 @@ const AppShell = ({ children }) => {
         }}
         className="mb-8 flex items-center gap-2 px-2 text-left"
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-flow text-white">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 13 L9 18 L20 6" />
-          </svg>
-        </span>
+        <TaskflowLogo className="h-7 w-7 shrink-0" />
         <span className="font-display text-lg tracking-tight text-ink">Taskflow</span>
       </button>
 
@@ -100,11 +97,7 @@ const AppShell = ({ children }) => {
           onClick={() => navigate("/dashboard")}
           className="flex items-center gap-2 text-left"
         >
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-flow text-white">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 13 L9 18 L20 6" />
-            </svg>
-          </span>
+          <TaskflowLogo className="h-7 w-7" />
           <span className="font-display text-lg tracking-tight text-ink">Taskflow</span>
         </button>
         <button

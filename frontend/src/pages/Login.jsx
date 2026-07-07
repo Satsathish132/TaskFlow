@@ -109,7 +109,7 @@ const Login = () => {
           <p className="mt-6 text-center text-sm text-ink-soft">
             Starting fresh?{" "}
             <Link to="/register" className="font-medium text-flow-deep hover:underline">
-              Start your organization
+              Register Your Company
             </Link>
           </p>
         </>
