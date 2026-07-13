@@ -47,10 +47,11 @@ const AppShell = ({ children }) => {
           <NavLink
             key={l.to}
             to={l.to}
+            end={l.to === "/dashboard"}
             onClick={() => setMobileNavOpen(false)}
             className={({ isActive }) => `${navItem} ${isActive ? navItemActive : ""}`}
           >
-            <span className="w-4 text-center">{l.icon}</span>
+            <span className="flex w-4 items-center justify-center text-center">{l.icon}</span>
             <span className="flex-1">{l.label}</span>
             {!!l.badge && (
               <span className="rounded-full bg-flow px-1.5 py-0.5 font-mono text-[10px] text-white">

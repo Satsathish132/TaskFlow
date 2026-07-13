@@ -1,3 +1,4 @@
+const util   = require("util");
 const db     = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt    = require("jsonwebtoken");
@@ -6,12 +7,18 @@ const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
 const logger = require('../logger');
 
+const query = util.promisify(db.query).bind(db);
+
 const slugifyDomain = (name) =>
   name
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "")
     .slice(0, 63);
+
+// Hash reset tokens the same way you'd hash any bearer secret before storing —
+// the raw token only ever exists in the emailed link, never in the DB.
+const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
 
 exports.register = async (req, res) => {
   const { first_name, last_name, email, password, organization_name, organization_domain } = req.body;
@@ -240,13 +247,45 @@ exports.changePassword = async (req, res) => {
 
     const hashed = await bcrypt.hash(new_password, 10);
 
+    // Changing the password invalidates the current refresh token + any
+    // active sessions, so a device/attacker holding an old session gets
+    // logged out too.
     db.query(
-      "UPDATE users SET password = ?, must_change_password = FALSE WHERE id = ?",
+      "UPDATE users SET password = ?, must_change_password = FALSE, refresh_token = NULL WHERE id = ?",
       [hashed, userId],
       (err) => {
         if (err) return res.status(500).json({ message: "Server error" });
 
+        db.query("DELETE FROM sessions WHERE user_id = ?", [userId], (sessErr) => {
+          if (sessErr) logger.error("CHANGE_PASSWORD (sessions cleanup) ERROR:", sessErr);
+        });
+        db.query("DELETE FROM user_sessions WHERE user_id = ?", [userId], (sessErr) => {
+          if (sessErr) logger.error("CHANGE_PASSWORD (user_sessions cleanup) ERROR:", sessErr);
+        });
+
         logger.success(`Password changed: user ${userId}`, { userId });
+
+        // Best-effort heads-up email; failure here shouldn't fail the request.
+        db.query("SELECT email, personal_email, first_name FROM users WHERE id = ?", [userId], async (lookupErr, urows) => {
+          if (lookupErr || !urows.length) return;
+          const u = urows[0];
+          const recipients = [u.email, u.personal_email].filter(Boolean);
+          for (const to of recipients) {
+            try {
+              await sendEmail({
+                to,
+                subject: "Your Taskflow password was changed",
+                html: `
+                  <p>Hi ${u.first_name},</p>
+                  <p>Your Taskflow password was just changed. If this was you, no action is needed.</p>
+                  <p>If you didn't make this change, please contact your administrator immediately.</p>
+                `,
+              });
+            } catch (mailErr) {
+              logger.error("CHANGE_PASSWORD (notify email) ERROR:", mailErr);
+            }
+          }
+        });
 
         res.json({ message: "Password changed successfully" });
       }
@@ -428,64 +467,91 @@ exports.createUser = async (req, res) => {
   });
 };
 
-exports.forgotPassword = (req, res) => {
-  const { email, personal_email } = req.body;
-  if (!email) return res.status(400).json({ message: "Email is required" });
+exports.forgotPassword = async (req, res) => {
+  const { identifier } = req.body;
+  if (!identifier) return res.status(400).json({ message: "Email is required" });
 
-  db.query(
-    "SELECT id, first_name, email, personal_email FROM users WHERE email = ?",
-    [email],
-    async (err, rows) => {
-      if (err) return res.status(500).json({ message: "Server error" });
+  const trimmed = identifier.trim().toLowerCase();
+  const genericResponse = { message: "If that email exists, a reset link has been sent." };
 
-      const genericResponse = { message: "If that email exists, a reset link has been sent." };
-      if (!rows.length) return res.json(genericResponse);
+  try {
+    const users = await query(
+      "SELECT id, first_name, email, personal_email FROM users WHERE LOWER(email) = ? OR LOWER(personal_email) = ?",
+      [trimmed, trimmed]
+    );
 
-      const user = rows[0];
-      let targetEmail;
+    if (!users.length) return res.json(genericResponse);
 
-      if (personal_email) {
-        const matches =
-          user.personal_email &&
-          user.personal_email.toLowerCase() === personal_email.trim().toLowerCase();
-        if (!matches) return res.json(genericResponse);
-        targetEmail = user.personal_email;
-      } else {
-        targetEmail = user.email;
-      }
+    // Group accounts by where their reset link will actually be delivered.
+    // Same personal_email on 3 accounts -> one inbox, one email, 3 links.
+    const byInbox = new Map();
 
-      const token   = crypto.randomBytes(32).toString("hex");
-      const expires = new Date(Date.now() + 30 * 60 * 1000);
+    for (const user of users) {
+      const targetEmail = user.personal_email || user.email;
+      const token       = crypto.randomBytes(32).toString("hex");
+      const tokenHash   = hashToken(token);
+      const expires     = new Date(Date.now() + 30 * 60 * 1000);
 
-      db.query(
+      await query(
         "UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?",
-        [token, expires, user.id],
-        async (err) => {
-          if (err) return res.status(500).json({ message: "Server error" });
-
-          const resetLink = `${process.env.FRONTEND_URL}/reset-password/${token}`;
-
-          try {
-            await sendEmail({
-              to: targetEmail,
-              subject: "Reset your Taskflow password",
-              html: `
-                <p>Hi ${user.first_name},</p>
-                <p>Click the link below to reset your password. This link expires in 30 minutes.</p>
-                <p><a href="${resetLink}">${resetLink}</a></p>
-                <p>If you didn't request this, you can safely ignore this email.</p>
-              `,
-            });
-            logger.success(`Password reset email sent: ${targetEmail}`, { userId: user.id });
-          } catch (mailErr) {
-            logger.error("FORGOT-PASSWORD EMAIL ERROR:", mailErr);
-          }
-
-          return res.json(genericResponse);
-        }
+        [tokenHash, expires, user.id]
       );
+
+      const resetLink = `${process.env.FRONTEND_URL}/reset-password/${token}`;
+
+      if (!byInbox.has(targetEmail)) byInbox.set(targetEmail, []);
+      byInbox.get(targetEmail).push({
+        accountEmail: user.email,
+        firstName:    user.first_name,
+        resetLink,
+      });
     }
-  );
+
+    for (const [targetEmail, accounts] of byInbox) {
+      const isMultiple = accounts.length > 1;
+
+      const listHtml = accounts
+        .map(
+          (a) => `
+            <div style="margin: 16px 0; padding: 14px; background: #f3f4f6; border-radius: 8px; border-left: 4px solid #4F6EF7;">
+              <p style="margin: 0 0 6px; font-weight: bold; color: #333;">${a.accountEmail}</p>
+              <a href="${a.resetLink}" style="color:#4F6EF7;">Reset password for this account</a>
+            </div>
+          `
+        )
+        .join("");
+
+      const html = isMultiple
+        ? `
+          <p>Hi ${accounts[0].firstName},</p>
+          <p>We found <strong>${accounts.length} accounts</strong> linked to this email. Click the link for the one you want to reset — each expires in 30 minutes.</p>
+          ${listHtml}
+          <p>If you didn't request this, you can safely ignore this email.</p>
+        `
+        : `
+          <p>Hi ${accounts[0].firstName},</p>
+          <p>Click the link below to reset your password. This link expires in 30 minutes.</p>
+          <p><a href="${accounts[0].resetLink}">${accounts[0].resetLink}</a></p>
+          <p>If you didn't request this, you can safely ignore this email.</p>
+        `;
+
+      try {
+        await sendEmail({
+          to: targetEmail,
+          subject: isMultiple ? "Reset your Taskflow password — multiple accounts found" : "Reset your Taskflow password",
+          html,
+        });
+        logger.success(`Password reset email sent: ${targetEmail}`, { accountCount: accounts.length });
+      } catch (mailErr) {
+        logger.error("FORGOT-PASSWORD EMAIL ERROR:", mailErr);
+      }
+    }
+
+    return res.json(genericResponse);
+  } catch (err) {
+    logger.error("FORGOT_PASSWORD ERROR:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
 };
 
 exports.resetPassword = async (req, res) => {
@@ -498,9 +564,11 @@ exports.resetPassword = async (req, res) => {
     return res.status(400).json({ message: "Password must be at least 8 characters" });
   }
 
+  const tokenHash = hashToken(token);
+
   db.query(
-    "SELECT id, reset_token_expires FROM users WHERE reset_token = ?",
-    [token],
+    "SELECT id, first_name, email, personal_email, reset_token_expires FROM users WHERE reset_token = ?",
+    [tokenHash],
     async (err, rows) => {
       if (err) return res.status(500).json({ message: "Server error" });
       if (!rows.length) return res.status(400).json({ message: "Invalid or expired reset link" });
@@ -512,13 +580,41 @@ exports.resetPassword = async (req, res) => {
 
       const hashed = await bcrypt.hash(new_password, 10);
 
+      // Clear the reset token AND kill the existing refresh token/sessions —
+      // a reset is often triggered because the account was compromised, so
+      // any session an attacker already holds should die right here too.
       db.query(
-        "UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL WHERE id = ?",
+        "UPDATE users SET password = ?, reset_token = NULL, reset_token_expires = NULL, refresh_token = NULL WHERE id = ?",
         [hashed, user.id],
         (err) => {
           if (err) return res.status(500).json({ message: "Server error" });
 
+          db.query("DELETE FROM sessions WHERE user_id = ?", [user.id], (sessErr) => {
+            if (sessErr) logger.error("RESET_PASSWORD (sessions cleanup) ERROR:", sessErr);
+          });
+          db.query("DELETE FROM user_sessions WHERE user_id = ?", [user.id], (sessErr) => {
+            if (sessErr) logger.error("RESET_PASSWORD (user_sessions cleanup) ERROR:", sessErr);
+          });
+
           logger.success(`Password reset completed: user ${user.id}`, { userId: user.id });
+
+          // Best-effort heads-up email to every address on file for this account.
+          const recipients = [user.email, user.personal_email].filter(Boolean);
+          recipients.forEach(async (to) => {
+            try {
+              await sendEmail({
+                to,
+                subject: "Your Taskflow password was reset",
+                html: `
+                  <p>Hi ${user.first_name},</p>
+                  <p>Your Taskflow password was just reset and all active sessions were signed out.</p>
+                  <p>If you didn't do this, please contact your administrator immediately.</p>
+                `,
+              });
+            } catch (mailErr) {
+              logger.error("RESET_PASSWORD (notify email) ERROR:", mailErr);
+            }
+          });
 
           return res.json({ message: "Password reset successfully. You can now log in." });
         }

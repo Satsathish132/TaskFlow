@@ -184,6 +184,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const userRoutes         = require("./routes/userRoutes");
 const taskFilesRoutes    = require("./routes/taskFiles.routes");
 const settingsRoutes = require("./routes/settingsRoutes");
+require("./jobs/purgeWorkspaceBackups");
 
 app.use("/api/auth",          authRoutes);
 app.use("/api/workspaces",    workspaceRoutes);
@@ -196,12 +197,14 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/users",         userRoutes);
 app.use("/api",               taskFilesRoutes);
 app.use("/api/settings", settingsRoutes);
+
 // ===================== SOCKET.IO =====================
 const io = new Server(server, {
   cors: { origin: "*" }
 });
 
 app.set("io", io);
+require("./utils/io").setIO(io); // NEW
 
 io.on("connection", (socket) => {
   logger.info(` User connected: ${socket.id}`);

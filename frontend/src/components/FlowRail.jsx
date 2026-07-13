@@ -6,7 +6,7 @@ const STAGES = [
   { key: "done", label: "Done", position: 100 },
 ];
 
-const STEP_DELAY_MS = 1500; // pause 2 seconds at each stage before moving on
+const STEP_DELAY_MS = 1800; // pause 2 seconds at each stage before moving on
 
 const FlowRail = () => {
   const [current, setCurrent] = useState(0);

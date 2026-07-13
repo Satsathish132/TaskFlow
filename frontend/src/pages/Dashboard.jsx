@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import AppShell from "../components/AppShell";
 import EmptyState from "../components/EmptyState";
 import Modal from "../components/Modal";
 import RoleGate from "../components/RoleGate";
+import WorkspaceBackups from "../components/WorkspaceBackups";
 import { Field, Input, Textarea, Button } from "../components/kit";
 import { can } from "../utils/roles";
 
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openBackupsOnLoad = searchParams.get("panel") === "backups";
 
   const [workspaces, setWorkspaces] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -57,11 +60,21 @@ const Dashboard = () => {
             Morning, {user?.first_name}.
           </h1>
         </div>
-        <RoleGate allow={can.createWorkspace}>
-          <Button variant="accent" onClick={() => setModalOpen(true)}>
-            + New workspace
-          </Button>
-        </RoleGate>
+        <div className="flex items-center gap-2">
+          <RoleGate allow={can.deleteWorkspace}>
+            <WorkspaceBackups
+              defaultOpen={openBackupsOnLoad}
+              onOpenChange={(isOpen) => {
+                if (!isOpen && openBackupsOnLoad) setSearchParams({}, { replace: true });
+              }}
+            />
+          </RoleGate>
+          <RoleGate allow={can.createWorkspace}>
+            <Button variant="accent" onClick={() => setModalOpen(true)}>
+              + New workspace
+            </Button>
+          </RoleGate>
+        </div>
       </div>
 
       <section>

@@ -9,6 +9,8 @@ export const ROLE_LABEL = {
 
 export const can = {
   createWorkspace: (role) => ["SUPER_ADMIN", "ADMIN"].includes(role),
+  editWorkspace: (role) => ["SUPER_ADMIN", "ADMIN"].includes(role),   // NEW
+  deleteWorkspace: (role) => ["SUPER_ADMIN", "ADMIN"].includes(role),
   createOrgUser: (role) => ["SUPER_ADMIN", "ADMIN"].includes(role),
   changeAnyRole: (role) => role === "SUPER_ADMIN",
   removeWorkspaceMember: (role) => ["SUPER_ADMIN", "ADMIN"].includes(role),

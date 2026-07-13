@@ -6,7 +6,7 @@ const logger = require("../logger");
 // ADD COMMENT
 // ===============================
 exports.addComment = (req, res) => {
-    logger.log("🔥 Add Comment API HIT");
+    logger.info("🔥 Add Comment API HIT");
 
     const { taskId, comment, workspaceId } = req.body || {};
     const userId = req.user?.id;
@@ -23,7 +23,7 @@ exports.addComment = (req, res) => {
         [taskId, userId, comment],
         (err, result) => {
             if (err) {
-                logger.log("ERROR (addComment):", err);
+                logger.error("ERROR (addComment):", err);
                 return res.status(500).json({ message: "Server error", error: err });
             }
 
@@ -63,7 +63,7 @@ exports.getComments = (req, res) => {
         [taskId],
         (err, result) => {
             if (err) {
-                logger.log("ERROR:", err);
+                logger.error("ERROR:", err);
                 return res.status(500).json({ message: "Server error", error: err });
             }
             return res.json(result);

@@ -1,25 +1,16 @@
-const express=require("express");
+const express = require("express");
+const router = express.Router();
+const workspaceController = require("../controllers/workspaceController");
+const { verifyToken } = require("../middleware/authMiddleware");
 
-const router=express.Router();
+router.post("/create", verifyToken, workspaceController.createWorkspace);
+router.get("/my", verifyToken, workspaceController.getMyWorkspaces);
 
-const workspaceController=
-require("../controllers/workspaceController");
+// NEW
+router.put("/:id", verifyToken, workspaceController.updateWorkspace);
+router.delete("/:id", verifyToken, workspaceController.deleteWorkspace);
+router.get("/backups", verifyToken, workspaceController.getWorkspaceBackups);
+router.post("/backups/:backupId/restore", verifyToken, workspaceController.restoreWorkspaceBackup);
+router.delete("/backups/:backupId", verifyToken, workspaceController.deleteWorkspaceBackup);
 
-const {
-verifyToken
-}=require("../middleware/authMiddleware");
-
-
-router.post(
-"/create",
-verifyToken,
-workspaceController.createWorkspace
-);
-
-router.get(
-"/my",
-verifyToken,
-workspaceController.getMyWorkspaces
-);
-
-module.exports=router;
+module.exports = router;

@@ -41,7 +41,7 @@ const Login = () => {
     <AuthLayout
       eyebrow="Welcome back"
       title="Log in"
-      subtitle={isOrg ? "New here? Just your work email is enough to start." : "Log in with your member email and password."}
+      subtitle="First time logging in? Leave the password blank and we'll help you set one."
     >
       <div className="mb-6 grid grid-cols-2 gap-1 rounded-lg border border-line bg-paper p-1">
         <button
@@ -73,8 +73,7 @@ const Login = () => {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={isOrg ? "Leave blank if this is your first login" : undefined}
-            required={!isOrg}
+            placeholder="Leave blank if this is your first login"
           />
         </Field>
 

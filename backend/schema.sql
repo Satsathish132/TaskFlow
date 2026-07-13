@@ -319,3 +319,45 @@ CREATE INDEX idx_login_history_user ON login_history (user_id);
 ALTER TABLE users
     ADD COLUMN two_factor_enabled BOOLEAN      DEFAULT FALSE,
     ADD COLUMN two_factor_secret  VARCHAR(255) NULL;
+
+CREATE TABLE workspace_backups (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    organization_id INT           NOT NULL,
+    workspace_id    INT           NOT NULL,   -- original id, no FK since the workspace row is gone after delete
+    name            VARCHAR(255)  NOT NULL,
+    backup_data     LONGTEXT      NOT NULL,   -- JSON snapshot: workspace, members, projects, tasks, comments, activity
+    deleted_by      INT           NOT NULL,
+    created_at      TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+    FOREIGN KEY (deleted_by)      REFERENCES users(id)         ON DELETE SET NULL
+);
+
+CREATE INDEX idx_workspace_backups_org ON workspace_backups (organization_id);
+
+ALTER TABLE workspace_backups
+  ADD COLUMN expires_at DATETIME NOT NULL DEFAULT (DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 30 DAY)),
+  ADD COLUMN notified_expiring BOOLEAN NOT NULL DEFAULT FALSE;
+
+UPDATE workspace_backups
+SET expires_at = DATE_ADD(created_at, INTERVAL 30 DAY)
+WHERE expires_at IS NULL;
+
+CREATE INDEX idx_workspace_backups_expires_at ON workspace_backups (expires_at);
+
+CREATE TABLE project_backups (
+    id           INT AUTO_INCREMENT PRIMARY KEY,
+    workspace_id INT           NOT NULL,
+    project_id   INT           NOT NULL,
+    name         VARCHAR(255)  NOT NULL,
+    backup_data  LONGTEXT      NOT NULL,
+    deleted_by   INT           NOT NULL,
+    created_at   TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
+    expires_at   DATETIME      NOT NULL DEFAULT (DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 30 DAY)),
+
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (deleted_by)   REFERENCES users(id)      ON DELETE SET NULL
+);
+
+CREATE INDEX idx_project_backups_workspace ON project_backups (workspace_id);
+CREATE INDEX idx_project_backups_expires_at ON project_backups (expires_at);
