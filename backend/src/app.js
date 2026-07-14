@@ -13,10 +13,29 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-app.use(cors({
-  origin: process.env.CLIENT_URL,
-  credentials: true
-}));
+// ✅ single source of truth for the frontend URL
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:8080";
+
+const allowedOrigins = [
+  ...(process.env.CORS_ORIGIN || "").split(","),
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+  "http://localhost:5173",
+  "http://localhost:8080",
+]
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
 
 const db = require("./config/db");
 
@@ -33,7 +52,7 @@ passport.use(
     {
       clientID:     process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: `${process.env.API_URL}/api/auth/google/callback`,
+      callbackURL:  process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/api/auth/google/callback",
       proxy: true,
     },
     async (accessToken, refreshToken, profile, done) => {
@@ -112,11 +131,11 @@ app.get("/api/auth/google/callback",
       (err, user, info) => {
         if (err) {
           logger.error('PASSPORT ERROR', { error: err.message, stack: err.stack });
-          return res.redirect(`${process.env.CLIENT_URL}?error=google_failed`);
+          return res.redirect(`${FRONTEND_URL}?error=google_failed`);
         }
         if (!user) {
           logger.error('NO USER RETURNED', { info });
-          return res.redirect(`${process.env.CLIENT_URL}?error=google_failed`);
+          return res.redirect(`${FRONTEND_URL}?error=google_failed`);
         }
 
         try {
@@ -143,12 +162,10 @@ app.get("/api/auth/google/callback",
             first_name:      user.first_name,
             last_name:       user.last_name,
             email:           user.email,
-            role:            user.role,             // ✅ added
-            organization_id: user.organization_id,  // ✅ added
+            role:            user.role,
+            organization_id: user.organization_id,
           }));
 
-          // ✅ Record this session and login event, matching the real
-          // schema used by authController.js's login function
           db.query(
             "INSERT INTO sessions (user_id, token, ip_address, device) VALUES (?, ?, ?, ?)",
             [user.id, accessToken, req.ip, req.headers["user-agent"] || null]
@@ -160,11 +177,12 @@ app.get("/api/auth/google/callback",
 
           logger.info(`Google login success: ${user.email}`);
 
-          return res.redirect(`${process.env.CLIENT_URL}?accessToken=${accessToken}&refreshToken=${refreshToken}&user=${userPayload}`);
-          
+          return res.redirect(
+            `${FRONTEND_URL}?accessToken=${accessToken}&refreshToken=${refreshToken}&user=${userPayload}`
+          );
         } catch (tokenErr) {
           logger.error('Token generation error', { error: tokenErr.message, stack: tokenErr.stack });
-          return res.redirect(`${process.env.CLIENT_URL}?error=google_failed`);
+          return res.redirect(`${FRONTEND_URL}?error=token_failed`);
         }
       }
     )(req, res, next);
@@ -182,7 +200,7 @@ const activityRoutes     = require("./routes/activityRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const userRoutes         = require("./routes/userRoutes");
 const taskFilesRoutes    = require("./routes/taskFiles.routes");
-const settingsRoutes = require("./routes/settingsRoutes");
+const settingsRoutes     = require("./routes/settingsRoutes");
 require("./jobs/purgeWorkspaceBackups");
 
 app.use("/api/auth",          authRoutes);
@@ -195,7 +213,7 @@ app.use("/api/activity",      activityRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/users",         userRoutes);
 app.use("/api",               taskFilesRoutes);
-app.use("/api/settings", settingsRoutes);
+app.use("/api/settings",      settingsRoutes);
 
 // ===================== SOCKET.IO =====================
 const io = new Server(server, {
@@ -203,7 +221,7 @@ const io = new Server(server, {
 });
 
 app.set("io", io);
-require("./utils/io").setIO(io); // NEW
+require("./utils/io").setIO(io);
 
 io.on("connection", (socket) => {
   logger.info(` User connected: ${socket.id}`);
