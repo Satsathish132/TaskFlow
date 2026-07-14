@@ -33,7 +33,7 @@ passport.use(
     {
       clientID:     process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL:  "${process.env.API_URL}/api/auth/google/callback",
+      callbackURL: `${process.env.API_URL}/api/auth/google/callback`,
       proxy: true,
     },
     async (accessToken, refreshToken, profile, done) => {
@@ -112,11 +112,11 @@ app.get("/api/auth/google/callback",
       (err, user, info) => {
         if (err) {
           logger.error('PASSPORT ERROR', { error: err.message, stack: err.stack });
-          return res.redirect("${process.env.API_URL}?error=google_failed");
+          return res.redirect(`${process.env.CLIENT_URL}?error=google_failed`);
         }
         if (!user) {
           logger.error('NO USER RETURNED', { info });
-          return res.redirect("${process.env.API_URL}?error=google_failed");
+          return res.redirect(`${process.env.CLIENT_URL}?error=google_failed`);
         }
 
         try {
@@ -160,12 +160,11 @@ app.get("/api/auth/google/callback",
 
           logger.info(`Google login success: ${user.email}`);
 
-          return res.redirect(
-            `${process.env.API_URL}?accessToken=${accessToken}&refreshToken=${refreshToken}&user=${userPayload}`
-          );
+          return res.redirect(`${process.env.CLIENT_URL}?accessToken=${accessToken}&refreshToken=${refreshToken}&user=${userPayload}`);
+          
         } catch (tokenErr) {
           logger.error('Token generation error', { error: tokenErr.message, stack: tokenErr.stack });
-          return res.redirect("${process.env.API_URL}?error=token_failed");
+          return res.redirect(`${process.env.CLIENT_URL}?error=google_failed`);
         }
       }
     )(req, res, next);
