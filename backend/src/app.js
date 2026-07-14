@@ -46,14 +46,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(passport.initialize());
 
-// ✅ Shared domain-slug helper (same logic as authController.js's register)
-const slugifyDomain = (name) =>
-  name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "")
-    .slice(0, 63);
-
 // ===================== GOOGLE OAUTH STRATEGY =====================
 passport.use(
   new GoogleStrategy(
@@ -88,17 +80,12 @@ passport.use(
           return done(null, existing[0]);
         }
 
-        // ✅ New Google user → create organization (with domain) + SUPER_ADMIN
+        // ✅ New Google user → create organization + SUPER_ADMIN
         logger.info(`Creating new Google user: ${email}`);
 
-        const orgName = `${first_name}'s Organization`;
-        const slug    = slugifyDomain(first_name || "org");
-        // Fallback guarantees uniqueness even if first_name slugifies to "" or collides
-        const domain  = `${slug || "org"}${Date.now()}.com`;
-
         const [orgResult] = await db.promise().query(
-          "INSERT INTO organizations (name, domain) VALUES (?, ?)",
-          [orgName, domain]
+          "INSERT INTO organizations (name) VALUES (?)",
+          [`${first_name}'s Organization`]
         );
         const organizationId = orgResult.insertId;
 
