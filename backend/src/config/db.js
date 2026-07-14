@@ -1,6 +1,5 @@
 const mysql = require("mysql2");
 require("dotenv").config();
-const logger = require('../logger'); // adjust path if this file isn't in src/config
 
 const db = mysql.createConnection({
   host: process.env.DB_HOST,
@@ -10,11 +9,8 @@ const db = mysql.createConnection({
 });
 
 db.connect((err) => {
-  if (err) {
-    logger.error('DB Error', { error: err.message, stack: err.stack });
-  } else {
-    logger.info('MySQL Connected');
-  }
+  if (err) console.log("DB Error", err);
+  else console.log("MySQL Connected");
 });
 
 module.exports = db;

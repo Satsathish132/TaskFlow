@@ -86,8 +86,8 @@ const Settings = () => {
       </div>
 
       <div className={activeTab === "activity" ? "max-w-3xl space-y-6" : "max-w-2xl space-y-6"}>
-        {activeTab === "profile"       && <ProfileTab user={user} changePassword={changePassword} />}
-        {activeTab === "security"      && <SecurityTab />}
+        {activeTab === "profile"       && <ProfileTab user={user} />}
+        {activeTab === "security"      && <SecurityTab changePassword={changePassword} />}
         {activeTab === "notifications" && <NotificationsTab />}
         {activeTab === "activity"      && <ActivityTab />}
         {activeTab === "analytics" && isAdmin && <AnalyticsTab />}
@@ -99,13 +99,7 @@ const Settings = () => {
 // ─────────────────────────────────────────────────────────────────
 // PROFILE TAB
 // ─────────────────────────────────────────────────────────────────
-const ProfileTab = ({ user, changePassword }) => {
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm,  setConfirm]  = useState("");
-  const [error,    setError]    = useState("");
-  const [success,  setSuccess]  = useState("");
-  const [submitting, setSubmitting] = useState(false);
+const ProfileTab = ({ user }) => {
   const [accounts, setAccounts] = useState(null);
 
   useEffect(() => {
@@ -113,24 +107,6 @@ const ProfileTab = ({ user, changePassword }) => {
       .then(r => setAccounts(r.data))
       .catch(() => {});
   }, []);
-
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setError(""); setSuccess("");
-    if (!currentPassword) return setError("Enter your current password.");
-    if (password.length < 6) return setError("New password must be at least 6 characters.");
-    if (password !== confirm) return setError("Passwords don't match.");
-    setSubmitting(true);
-    try {
-      await changePassword(currentPassword, password);
-      setSuccess("Password changed successfully.");
-      setCurrentPassword(""); setPassword(""); setConfirm("");
-    } catch (err) {
-      setError(err.response?.data?.message || "Couldn't change your password.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   return (
     <>
@@ -148,49 +124,6 @@ const ProfileTab = ({ user, changePassword }) => {
             <RoleBadge role={user?.role} />
           </div>
         </div>
-      </Section>
-
-      {/* Change password */}
-      <Section title="Change password" subtitle="Confirm your current password, then set a new one (at least 6 characters).">
-        <form onSubmit={onSubmit}>
-          <Field label="Current password">
-            <Input
-              type="password"
-              value={currentPassword}
-              onChange={e => setCurrentPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </Field>
-          <Field label="New password">
-            <Input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              autoComplete="new-password"
-              required
-            />
-          </Field>
-          <Field label="Confirm new password">
-            <Input
-              type="password"
-              value={confirm}
-              onChange={e => setConfirm(e.target.value)}
-              autoComplete="new-password"
-              required
-            />
-          </Field>
-          {error   && <p className="mb-4 text-sm text-flow-deep">{error}</p>}
-          {success && <p className="mb-4 text-sm text-status-done">{success}</p>}
-          <div className="flex items-center gap-4">
-            <Button type="submit" variant="accent" disabled={submitting}>
-              {submitting ? "Saving…" : "Change password"}
-            </Button>
-            <Link to="/forgot-password" className="text-sm font-medium text-flow-deep hover:underline">
-              Forgot your password?
-            </Link>
-          </div>
-        </form>
       </Section>
 
       {/* Connected accounts */}
@@ -236,10 +169,7 @@ const ProfileTab = ({ user, changePassword }) => {
 // ─────────────────────────────────────────────────────────────────
 // SECURITY TAB
 // ─────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────
-// SECURITY TAB
-// ─────────────────────────────────────────────────────────────────
-const SecurityTab = () => {
+const SecurityTab = ({ changePassword }) => {
   const [sessions,     setSessions]     = useState([]);
   const [loginHistory, setLoginHistory] = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -253,6 +183,32 @@ const SecurityTab = () => {
   const [twoFAError, setTwoFAError] = useState("");
   const [twoFASuccess, setTwoFASuccess] = useState("");
   const [twoFABusy, setTwoFABusy] = useState(false);
+
+  // ── Change password state ──────────────────────────────────────
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm,  setConfirm]  = useState("");
+  const [pwError,    setPwError]    = useState("");
+  const [pwSuccess,  setPwSuccess]  = useState("");
+  const [pwSubmitting, setPwSubmitting] = useState(false);
+
+  const onChangePassword = async (e) => {
+    e.preventDefault();
+    setPwError(""); setPwSuccess("");
+    if (!currentPassword) return setPwError("Enter your current password.");
+    if (password.length < 6) return setPwError("New password must be at least 6 characters.");
+    if (password !== confirm) return setPwError("Passwords don't match.");
+    setPwSubmitting(true);
+    try {
+      await changePassword(currentPassword, password);
+      setPwSuccess("Password changed successfully.");
+      setCurrentPassword(""); setPassword(""); setConfirm("");
+    } catch (err) {
+      setPwError(err.response?.data?.message || "Couldn't change your password.");
+    } finally {
+      setPwSubmitting(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -340,6 +296,49 @@ const SecurityTab = () => {
 
   return (
     <>
+      {/* Change password */}
+      <Section title="Change password" subtitle="Confirm your current password, then set a new one (at least 6 characters).">
+        <form onSubmit={onChangePassword}>
+          <Field label="Current password">
+            <Input
+              type="password"
+              value={currentPassword}
+              onChange={e => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </Field>
+          <Field label="New password">
+            <Input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              autoComplete="new-password"
+              required
+            />
+          </Field>
+          <Field label="Confirm new password">
+            <Input
+              type="password"
+              value={confirm}
+              onChange={e => setConfirm(e.target.value)}
+              autoComplete="new-password"
+              required
+            />
+          </Field>
+          {pwError   && <p className="mb-4 text-sm text-flow-deep">{pwError}</p>}
+          {pwSuccess && <p className="mb-4 text-sm text-status-done">{pwSuccess}</p>}
+          <div className="flex items-center gap-4">
+            <Button type="submit" variant="accent" disabled={pwSubmitting}>
+              {pwSubmitting ? "Saving…" : "Change password"}
+            </Button>
+            <Link to="/forgot-password" className="text-sm font-medium text-flow-deep hover:underline">
+              Forgot your password?
+            </Link>
+          </div>
+        </form>
+      </Section>
+
       {/* Two-factor authentication */}
       <Section
         title="Two-Factor Authentication"
@@ -571,9 +570,6 @@ const NotificationsTab = () => {
   );
 };
 
-// ─────────────────────────────────────────────────────────────────
-// ACTIVITY TAB
-// ─────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────
 // ACTIVITY TAB
 // ─────────────────────────────────────────────────────────────────
