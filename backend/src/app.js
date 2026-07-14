@@ -14,7 +14,7 @@ const app = express();
 const server = http.createServer(app);
 
 app.use(cors({
-  origin: "http://localhost:8080",
+  origin: process.env.CLIENT_URL,
   credentials: true
 }));
 
@@ -33,7 +33,7 @@ passport.use(
     {
       clientID:     process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL:  "http://localhost:5000/api/auth/google/callback",
+      callbackURL:  "${process.env.API_URL}/api/auth/google/callback",
       proxy: true,
     },
     async (accessToken, refreshToken, profile, done) => {
@@ -112,11 +112,11 @@ app.get("/api/auth/google/callback",
       (err, user, info) => {
         if (err) {
           logger.error('PASSPORT ERROR', { error: err.message, stack: err.stack });
-          return res.redirect("http://localhost:8080?error=google_failed");
+          return res.redirect("${process.env.API_URL}?error=google_failed");
         }
         if (!user) {
           logger.error('NO USER RETURNED', { info });
-          return res.redirect("http://localhost:8080?error=google_failed");
+          return res.redirect("${process.env.API_URL}?error=google_failed");
         }
 
         try {
@@ -161,11 +161,11 @@ app.get("/api/auth/google/callback",
           logger.info(`Google login success: ${user.email}`);
 
           return res.redirect(
-            `http://localhost:8080?accessToken=${accessToken}&refreshToken=${refreshToken}&user=${userPayload}`
+            `${process.env.API_URL}?accessToken=${accessToken}&refreshToken=${refreshToken}&user=${userPayload}`
           );
         } catch (tokenErr) {
           logger.error('Token generation error', { error: tokenErr.message, stack: tokenErr.stack });
-          return res.redirect("http://localhost:8080?error=token_failed");
+          return res.redirect("${process.env.API_URL}?error=token_failed");
         }
       }
     )(req, res, next);
